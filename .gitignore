@@ -132,3 +132,8 @@ react-app/build/
 react-app/node_modules/
 
 .idea
+
+data/
+backend/data/
+.vscode/
+backend/config.json
