@@ -8,7 +8,9 @@ networkx
 torch
 numpy>=2
 gavel>=0.1.7
-chemlog>=1.0.3
-chebai>=1.0.2
-#chebai-graph # this is not available on PyPI yet, install following the instructions at https://github.com/ChEB-AI/python-chebai-graph
-git+https://github.com/ChEB-AI/chemlog-extra
+chemlog>=1.0.6
+chebai>=1.2.0
+chebai-graph
+chemlog-extra
+chebifier>=1.2.1
+multiprocess
