@@ -188,5 +188,7 @@ class PredictionDetailApiHandler(Resource):
                 explain_infos_model["model_type"] = model.__class__.__name__
                 explain_infos_model["model_info"] = model.info_text
                 explain_infos["models"][model.model_name] = explain_infos_model
-
+        electra_infos = explain_infos["models"]["ELECTRA (ChEBI50-3STAR)"]
+        graph = electra_infos["graphs"]
+        print("Graphs infos for ELECTRA (ChEBI50-3STAR): ", type(graph), len(graph) if isinstance(graph, list) else "N/A")
         return explain_infos
