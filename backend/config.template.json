@@ -6,7 +6,6 @@
             "type": "chebifier type (e.g. electra)",
             "ckpt_path": "path/to/checkpoint.ckpt",
             "batch_size": 32,
-            "target_labels_path": "path/to/classes.txt",
             "classwise_weights_path": "path/to/trust.json"
         }
     }

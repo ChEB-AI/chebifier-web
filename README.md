@@ -30,7 +30,6 @@ and change the path for each setting according to your setup.
 The ensemble can take any models that are implemented in [python-chebifier](https://github.com/ChEB-AI/python-chebifier). See the repository for example configurations. Common arguments for a model are:
  * `type`: one of the available [MODEL_TYPES](https://github.com/ChEB-AI/python-chebifier/blob/dev/chebifier/model_registry.py), e.g. `electra`,
  * `batch_size`: Number of molecules that are passed to the model at once,
- * `target_labels_path`: List of ChEBI classes (the `classes.txt` file that comes as part of a [ChEB-AI](https://github.com/ChEB-AI/python-chebai) dataset)
  * `classwise_weights_path` (optional): Weights that should be assigned to each class (i.e., trust scores calculated on a validation set with [this script](https://github.com/ChEB-AI/python-chebai/blob/dev/chebai/result/generate_class_properties.py)
 
 
