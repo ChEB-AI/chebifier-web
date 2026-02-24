@@ -169,7 +169,7 @@ class PredictionDetailApiHandler(Resource):
 
     def post(self):
         parser = reqparse.RequestParser()
-        parser.add_argument("type", type=str)
+        parser.add_argument("type", type=str, required=False, default="type")  # can be used to specify different types of requests in the future
         parser.add_argument("smiles", type=str)
         parser.add_argument("selectedModels", type=dict)
 
