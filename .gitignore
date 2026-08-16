@@ -130,6 +130,8 @@ dmypy.json
 
 react-app/build/
 react-app/node_modules/
+# the Python `lib/` rule above also matches react-app/src/lib/, which is source
+!react-app/src/lib/
 
 .idea
 
