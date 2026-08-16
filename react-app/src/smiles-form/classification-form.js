@@ -17,7 +17,7 @@ import {SlChemistry} from "react-icons/sl";
 import FormLabel from '@mui/material/FormLabel';
 import FormControl from '@mui/material/FormControl';
 import Tooltip from '@mui/material/Tooltip';
-import {randomId} from '@mui/x-data-grid-generator';
+import {randomId} from '../lib/random-id';
 
 import DetailsPage from "./details-page";
 import {plot_ontology, MoleculeStructure} from "./ontology-utils";
