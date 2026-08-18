@@ -36,10 +36,19 @@ const Section = ({title, children}) => (
     </Paper>
 );
 
+/** "2026-08-18" as "18 August 2026", without dragging in a date library. */
+const formatDate = (day) => {
+    const date = new Date(`${day}T00:00:00Z`);
+    return Number.isNaN(date.getTime())
+        ? day
+        : date.toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'});
+};
+
 const About = () => {
     const [availableModels, setAvailableModels] = React.useState([]);
     const [availableModelsInfoTexts, setAvailableModelsInfoTexts] = React.useState([]);
     const [numClasses, setNumClasses] = React.useState(null);
+    const [stats, setStats] = React.useState(null);
 
     // Load once on mount so About content is fetched when the site loads
     React.useEffect(() => {
@@ -50,6 +59,7 @@ const About = () => {
         }).catch(() => {
             // silently ignore, page content still renders
         });
+        axios.get('/api/stats').then(response => setStats(response.data)).catch(() => {});
     }, []);
 
     return (
@@ -122,15 +132,6 @@ const About = () => {
                             ))}
                         </Section>
 
-                        <Section title="Your data">
-                            <Typography variant="body1" sx={{mb: 0}}>
-                                Chebifier does not collect or store the molecules you submit. A SMILES or InChI
-                                string you enter is used to compute the prediction you asked for and nothing else:
-                                it is never written to disk, never kept after the request, and never passed on to
-                                anyone else.
-                            </Typography>
-                        </Section>
-
                         <Section title="News">
                             {[
                                 ['08/2026', 'Re-calibrated ensemble. Added new, better deep learning models trained on ChEBI ' +
@@ -155,6 +156,23 @@ const About = () => {
                                 Glauer, Martin, et al.: Chebifier: Automating Semantic Classification in ChEBI to
                                 Accelerate Data-driven Discovery; Digital Discovery 3.5 (2024), <Link
                                 href="https://doi.org/10.1039/D3DD00238A">Link</Link>
+                            </Typography>
+                        </Section>
+
+                        <Section title="Your data">
+                            {stats?.molecules > 0 && (
+                                <Typography variant="body1" paragraph>
+                                    Chebifier has classified {stats.molecules.toLocaleString('en-US')} molecules
+                                    {stats.since ? ` since ${formatDate(stats.since)}` : ''}. That count is all we
+                                    keep: the number of molecules per day, and nothing about the molecules
+                                    themselves.
+                                </Typography>
+                            )}
+                            <Typography variant="body1" sx={{mb: 0}}>
+                                Chebifier does not collect or store the molecules you submit. A SMILES or InChI
+                                string you enter is used to compute the prediction you asked for and nothing else:
+                                it is never written to disk, never kept after the request, and never passed on to
+                                anyone else.
                             </Typography>
                         </Section>
                     </Box>

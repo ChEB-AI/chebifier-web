@@ -43,6 +43,13 @@ Besides the models, the configuration points at the calibration of the ensemble:
  * `ENSEMBLE_CLASSES`: the class list the ensemble was calibrated on, one ChEBI id per line. The class-wise F1 scores are stored positionally, so this list has to match the calibration exactly.
  * `CHEBI_GRAPH`: the ChEBI graph pickle the calibration was built against. If the file is missing, it is downloaded from [Hugging Face](https://huggingface.co/datasets/chebai/chebifier).
  * `INCONSISTENCY_RESOLUTION`: `score-based` (the default) or `none`.
+ * `STATS_DB` (optional): SQLite file the number of classified molecules is counted in, shown in the
+   app as "x molecules classified since ...". Only a per-day count is stored, never the molecules.
+   Under uWSGI the request is answered by one of several worker processes, so the count cannot live
+   in memory - the increment is a single upserting statement in a transaction, which concurrent
+   workers cannot lose the way a read-modify-write on a plain file would. Put the file on local
+   disk (SQLite locking is unreliable over NFS) and on a path that survives a deploy. Delete the
+   file to reset the counter.
  * `PR_CURVE` (optional): a CSV of measured operating points (`threshold`, `full_micro_precision`,
    `full_micro_recall`), as written by the evaluation grid. It backs the precision/recall sliders in
    the ensemble settings: the user asks for more precision or more recall, and the app picks the

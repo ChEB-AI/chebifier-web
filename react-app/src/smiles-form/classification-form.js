@@ -565,11 +565,6 @@ export default function ClassificationGrid() {
                         Predict
                       </Button>
                     </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{mt: 1.5}}>
-                      Chebifier does not collect or store the molecules you submit. They are
-                      processed only to compute the prediction and are never written to disk or
-                      passed on to anyone else.
-                    </Typography>
                   </Box>
 
                 </Box>
