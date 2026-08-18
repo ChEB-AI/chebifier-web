@@ -26,27 +26,13 @@ import Typography from '@mui/material/Typography';
 import {styled} from '@mui/material/styles';
 
 import Alert from "@mui/material/Alert";
+import { loadRDKit } from '../lib/rdkit-loader';
 
 
 const GLOBAL_MOL_PARAMS = {
 	width: 300,
 	height: 300,
 }
-window
-      .initRDKitModule()
-      .then(function (RDKit) {
-        console.log("RDKit version: " + RDKit.version());
-        window.RDKit = RDKit;
-        /**
-         * The RDKit module is now loaded.
-         * You can use it anywhere.
-         */
-      })
-      .catch(() => {
-        // handle loading errors here...
-      });
-
-
 const NetworkElement = (data) => {
     const visJsRef = useRef(null);
     useEffect(() => {
@@ -173,10 +159,21 @@ export function HighlightsBlocks(data) {
 export function DetailsBlockwise(data) {
     const handleClose = data.handleClose;
     data = data.model_data;
-    var smiles = data.smiles
+    const smiles = data.smiles;
+    // RDKit is fetched once for the whole app, so it may not be there on the first render
+    const [rdkit, setRdkit] = React.useState(window.RDKit || null);
+    React.useEffect(() => {
+        let mounted = true;
+        loadRDKit().then((module) => {
+            if (mounted) setRdkit(module);
+        }).catch(() => {});
+        return () => {
+            mounted = false;
+        };
+    }, []);
     var mol = null;
-    if (!(smiles === null || smiles === undefined)) {
-        mol = window.RDKit.get_mol(smiles);
+    if (rdkit && !(smiles === null || smiles === undefined)) {
+        mol = rdkit.get_mol(smiles);
     }
   	//var svg_mol = mol.get_svg_with_highlights(JSON.stringify(GLOBAL_MOL_PARAMS));
   	//svg_mol = svg_mol.substring(svg_mol.indexOf("<svg"));

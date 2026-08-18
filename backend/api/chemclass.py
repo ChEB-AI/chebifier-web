@@ -1,4 +1,7 @@
+import copy
+import csv
 import math
+import os
 
 import matplotlib as mpl
 import torch
@@ -85,15 +88,56 @@ SMOOTHER = (
     if app.config["INCONSISTENCY_RESOLUTION"] == "score-based"
     else None
 )
+def read_operating_points():
+    """The measured precision/recall of the ensemble at a range of decision thresholds.
+
+    This is what lets a user ask for "more precision" instead of naming a threshold: each row is an
+    operating point the ensemble was actually evaluated at, so the number the slider shows was
+    measured rather than promised. Without the file the operating point stays fixed.
+    """
+    path = app.config.get("PR_CURVE")
+    if not path or not os.path.exists(path):
+        print(f"No precision/recall curve at {path}, the decision threshold stays fixed.")
+        return []
+    with open(path, "r", encoding="utf-8") as f:
+        rows = [
+            {
+                "threshold": float(row["threshold"]),
+                "precision": float(row["full_micro_precision"]),
+                "recall": float(row["full_micro_recall"]),
+            }
+            for row in csv.DictReader(f)
+        ]
+    rows.sort(key=lambda row: row["threshold"])
+    print(f"Loaded {len(rows)} operating points from {path}.")
+    return rows
+
+
+OPERATING_POINTS = read_operating_points()
+
+
+def requested_threshold(threshold):
+    """A threshold from the request, clamped to the range the ensemble was evaluated over."""
+    if threshold is None or not OPERATING_POINTS:
+        return DECISION_THRESHOLD
+    try:
+        threshold = float(threshold)
+    except (TypeError, ValueError):
+        return DECISION_THRESHOLD
+    return min(
+        max(threshold, OPERATING_POINTS[0]["threshold"]),
+        OPERATING_POINTS[-1]["threshold"],
+    )
+
+
 # Classes that came close to being predicted are offered alongside the prediction. "Close" is a
 # fraction of the ensemble's own operating point, so it follows the threshold if that ever moves.
 NEAR_MISS_FRACTION = 0.5
-NEAR_MISS_THRESHOLD = DECISION_THRESHOLD * NEAR_MISS_FRACTION
 NEAR_MISS_LIMIT = 10
 
 print(
     f"Ensemble ready: {len(MODELS)} models, {len(ENSEMBLE_CLASSES)} classes, "
-    f"decision threshold {DECISION_THRESHOLD} (near misses from {NEAR_MISS_THRESHOLD})."
+    f"decision threshold {DECISION_THRESHOLD}."
 )
 
 
@@ -151,7 +195,7 @@ def readable_rows(molecules):
     ]
 
 
-def near_miss_classes(aggregated, row):
+def near_miss_classes(aggregated, row, threshold):
     """The highest scoring classes that stayed below the decision threshold.
 
     Only classes some model actually covered can be near misses - a class no model said anything
@@ -161,7 +205,7 @@ def near_miss_classes(aggregated, row):
     candidates = (
         ~aggregated["class_decisions"][row]
         & aggregated["has_valid_predictions"][row]
-        & (scores > NEAR_MISS_THRESHOLD)
+        & (scores > threshold * NEAR_MISS_FRACTION)
     )
     class_indices = torch.nonzero(candidates).flatten()
     if class_indices.numel() == 0:
@@ -172,7 +216,7 @@ def near_miss_classes(aggregated, row):
     return [ENSEMBLE_CLASSES[class_idx] for class_idx in ranked.tolist()]
 
 
-def run_ensemble(smiles_list, selected_models, model_weights):
+def run_ensemble(smiles_list, selected_models, model_weights, threshold, resolve=True):
     """Base learner predictions, ensemble aggregation and inconsistency resolution for a batch of
     SMILES strings. Returns the per-model predictions alongside the aggregated result."""
     models = {name: MODELS[name] for name in selected_model_names(selected_models)}
@@ -185,15 +229,21 @@ def run_ensemble(smiles_list, selected_models, model_weights):
     aggregated = ENSEMBLE.with_weights(model_weights).predict(
         predictions, attribution=True
     )
-    if SMOOTHER is not None:
+    if SMOOTHER is not None and resolve:
+        smoother = SMOOTHER
+        if threshold != SMOOTHER.threshold:
+            # the smoother compares scores against the operating point, so it has to move with it -
+            # on a copy, since requests can overlap
+            smoother = copy.copy(SMOOTHER)
+            smoother.threshold = threshold
         aggregated = apply_inconsistency_resolution(
-            SMOOTHER,
+            smoother,
             ENSEMBLE_CLASSES,
             aggregated,
-            decision_threshold=DECISION_THRESHOLD,
+            decision_threshold=threshold,
         )
     aggregated["class_decisions"] = (
-        aggregated["net_score"] > DECISION_THRESHOLD
+        aggregated["net_score"] > threshold
     ) & aggregated["has_valid_predictions"]
     aggregated["complete_failure"] = torch.all(
         ~aggregated["has_valid_predictions"], dim=1
@@ -211,6 +261,7 @@ class ModelInfoAPI(Resource):
             ],
             "default_model_weights": DEFAULT_MODEL_WEIGHTS,
             "decision_threshold": DECISION_THRESHOLD,
+            "operating_points": OPERATING_POINTS,
             "n_classes": len(ENSEMBLE_CLASSES),
         }
 
@@ -223,7 +274,10 @@ class BatchPrediction(Resource):
             "smiles": [ ... list of SMILES or InChI strings],
             "ontology": bool (Optional),
             "selectedModels": {model name: bool} (Optional),
-            "modelWeights": {model name: number} (Optional, overrides the configured weights)
+            "modelWeights": {model name: number} (Optional, overrides the configured weights),
+            "decisionThreshold": number (Optional, overrides the ensemble's operating point),
+            "resolveInconsistencies": bool (Optional, default true - resolve predictions that
+                contradict the ChEBI hierarchy or its disjointness axioms)
         }
         :return:
         A dictionary with the following structure
@@ -245,12 +299,18 @@ class BatchPrediction(Resource):
         parser.add_argument("ontology", type=bool, required=False, default=False)
         parser.add_argument("selectedModels", type=dict, required=False, default=None)
         parser.add_argument("modelWeights", type=dict, required=False, default=None)
+        parser.add_argument("decisionThreshold", type=float, required=False, default=None)
+        parser.add_argument(
+            "resolveInconsistencies", type=bool, required=False, default=True
+        )
         args = parser.parse_args()
         smiles = args["smiles"]
         generate_ontology = args["ontology"]
+        threshold = requested_threshold(args["decisionThreshold"])
 
         if not smiles or len(smiles) == 0:
             result = {
+                "decision_threshold": threshold,
                 "predicted_parents": [],
                 "direct_parents": [],
                 "explanations": [],
@@ -269,6 +329,8 @@ class BatchPrediction(Resource):
                 [resolved_smiles[index] for index in rows],
                 args["selectedModels"],
                 requested_weights(args["modelWeights"]),
+                threshold,
+                args["resolveInconsistencies"],
             )
             model_names = list(predictions)
             attribution = aggregated["attribution"]
@@ -290,7 +352,7 @@ class BatchPrediction(Resource):
                 ENSEMBLE_CLASSES[class_idx]
                 for class_idx in torch.nonzero(decisions).flatten().tolist()
             ]
-            near_misses = near_miss_classes(aggregated, row)
+            near_misses = near_miss_classes(aggregated, row, threshold)
             predicted_parents.append(predicted)
             ontologies.append(
                 to_vis_graph(predicted, near_misses) if generate_ontology else None
@@ -328,6 +390,8 @@ class BatchPrediction(Resource):
             explanations.append(explanations_for_smiles)
 
         result = {
+            # the operating point the decisions were taken at, which the request may have moved
+            "decision_threshold": threshold,
             "predicted_parents": predicted_parents,
             "direct_parents": direct_parents,
             "explanations": explanations,

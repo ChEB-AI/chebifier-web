@@ -162,6 +162,10 @@ export function MoleculeStructure(data) {
   React.useEffect(() => {
     let mounted = true;
     let mol = null;
+    // an InChI input is drawn only once the backend has translated it, so a failed first attempt
+    // has to be forgotten when the string changes - otherwise the error outlives the fix
+    setSvg(null);
+    setError(null);
 
     async function run() {
       try {

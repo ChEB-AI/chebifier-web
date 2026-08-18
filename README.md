@@ -43,6 +43,11 @@ Besides the models, the configuration points at the calibration of the ensemble:
  * `ENSEMBLE_CLASSES`: the class list the ensemble was calibrated on, one ChEBI id per line. The class-wise F1 scores are stored positionally, so this list has to match the calibration exactly.
  * `CHEBI_GRAPH`: the ChEBI graph pickle the calibration was built against. If the file is missing, it is downloaded from [Hugging Face](https://huggingface.co/datasets/chebai/chebifier).
  * `INCONSISTENCY_RESOLUTION`: `score-based` (the default) or `none`.
+ * `PR_CURVE` (optional): a CSV of measured operating points (`threshold`, `full_micro_precision`,
+   `full_micro_recall`), as written by the evaluation grid. It backs the precision/recall sliders in
+   the ensemble settings: the user asks for more precision or more recall, and the app picks the
+   threshold that delivered it on the test set. Without the file the operating point stays fixed at
+   the one the ensemble reports.
 
 ### How a prediction is explained
 

@@ -93,8 +93,11 @@ const About = () => {
                             </Typography>
                             <Typography variant="body1" sx={{mb: 0}}>
                                 Clicking a class in the ontology graph of a result shows how much of the decision
-                                each model is responsible for. Details about the ensemble and its implementation can
-                                be found <Link href="https://github.com/ChEB-AI/python-chebifier">here</Link>.
+                                each model is responsible for. The ensemble settings also let you trade precision
+                                against recall - an experimental feature, whose percentages come from the ChEBI test
+                                set and will be optimistic for unusual molecules and rare classes. Details about the
+                                ensemble and its implementation can be
+                                found <Link href="https://github.com/ChEB-AI/python-chebifier">here</Link>.
                             </Typography>
                         </Section>
 
@@ -117,6 +120,15 @@ const About = () => {
                                     />
                                 </Box>
                             ))}
+                        </Section>
+
+                        <Section title="Your data">
+                            <Typography variant="body1" sx={{mb: 0}}>
+                                Chebifier does not collect or store the molecules you submit. A SMILES or InChI
+                                string you enter is used to compute the prediction you asked for and nothing else:
+                                it is never written to disk, never kept after the request, and never passed on to
+                                anyone else.
+                            </Typography>
                         </Section>
 
                         <Section title="News">

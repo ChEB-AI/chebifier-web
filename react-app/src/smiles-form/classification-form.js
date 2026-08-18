@@ -51,6 +51,10 @@ export default function ClassificationGrid() {
   const [defaultModelWeights, setDefaultModelWeights] = React.useState({});
   const [modelWeights, setModelWeights] = React.useState({});
   const [decisionThreshold, setDecisionThreshold] = React.useState(0.5);
+  const [defaultThreshold, setDefaultThreshold] = React.useState(0.5);
+  const [operatingPoints, setOperatingPoints] = React.useState([]);
+  // predictions that contradict the ChEBI hierarchy are corrected against each other by default
+  const [resolveInconsistencies, setResolveInconsistencies] = React.useState(true);
 
   const [inputText, setInputText] = React.useState("");
   const [predictionsLoading, setPredictionsLoading] = React.useState(false);
@@ -94,7 +98,9 @@ export default function ClassificationGrid() {
       setModelWeights({...weights});
       if (typeof response.data.decision_threshold === 'number') {
         setDecisionThreshold(response.data.decision_threshold);
+        setDefaultThreshold(response.data.decision_threshold);
       }
+      setOperatingPoints(response.data.operating_points || []);
       setModelsLoaded(true);
     });
   }, []);
@@ -116,7 +122,9 @@ export default function ClassificationGrid() {
         smiles: smiles,
         ontology: true,
         selectedModels: buildSelectedModels(),
-        modelWeights: modelWeights
+        modelWeights: modelWeights,
+        decisionThreshold: decisionThreshold,
+        resolveInconsistencies: resolveInconsistencies
       }
     }).then(response => {
       setRows((old) => old.map((row, i) => ({
@@ -128,6 +136,7 @@ export default function ClassificationGrid() {
         // what the backend read the input as - an InChI comes back translated to SMILES, which is
         // what the structure drawing and the per-model insights need
         resolved_smiles: (response.data.smiles || [])[i],
+        threshold: response.data.decision_threshold,
       })));
     }).finally(() => setPredictionsLoading(false));
   };
@@ -216,7 +225,7 @@ export default function ClassificationGrid() {
         <AttributionChart
           calculations={explanation.models}
           netScore={explanation.score}
-          threshold={decisionThreshold}
+          threshold={row.threshold ?? decisionThreshold}
         />
       </Box>
     );
@@ -434,7 +443,17 @@ export default function ClassificationGrid() {
                           disabled={!modelsLoaded || predictionsLoading}
                           canRerun={rows.length > 0}
                           onChange={(model, value) => setModelWeights(prev => ({...prev, [model]: value}))}
-                          onReset={() => setModelWeights({...defaultModelWeights})}
+                          onReset={() => {
+                            setModelWeights({...defaultModelWeights});
+                            setDecisionThreshold(defaultThreshold);
+                            setResolveInconsistencies(true);
+                          }}
+                          operatingPoints={operatingPoints}
+                          threshold={decisionThreshold}
+                          defaultThreshold={defaultThreshold}
+                          onThresholdChange={setDecisionThreshold}
+                          resolveInconsistencies={resolveInconsistencies}
+                          onResolveChange={setResolveInconsistencies}
                           onRerun={() => runPrediction(rows.map(row => row.smiles))}
                         />
                       )}
@@ -482,6 +501,11 @@ export default function ClassificationGrid() {
                         Predict
                       </Button>
                     </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{mt: 1.5}}>
+                      Chebifier does not collect or store the molecules you submit. They are
+                      processed only to compute the prediction and are never written to disk or
+                      passed on to anyone else.
+                    </Typography>
                   </Box>
 
                 </Box>
@@ -490,13 +514,21 @@ export default function ClassificationGrid() {
               {hasPredicted && (
                 <Box sx={{mt: 2, width: '90%', mx: 'auto'}}>
                   {rows.length > 0 && (
-                    <Box>
+                    <Box sx={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
+                      gap: 2,
+                      alignItems: 'start',
+                    }}>
                       {rows.map((row) => {
                         const canExpand = (row.direct_parents) && !predictionsLoading;
                         return (
                           <Paper key={row.id} sx={{
-                            p: 2, mb: 2, borderRadius: 2, boxShadow: 2,
+                            p: 2, borderRadius: 2, boxShadow: 2,
                             backgroundColor: '#ffffff', overflowX: 'auto',
+                            // an expanded card needs the whole row for its panels
+                            gridColumn: expandedRowId === row.id ? '1 / -1' : 'auto',
+                            cursor: canExpand && expandedRowId !== row.id ? 'pointer' : 'default',
                             // the app centres text globally, which leaves headings and the
                             // attribution rows floating over their columns
                             textAlign: 'left'
@@ -514,7 +546,9 @@ export default function ClassificationGrid() {
                                  }}
                           >
                             <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                              <Typography variant="subtitle2">{row.smiles}</Typography>
+                              <Typography variant="subtitle2" noWrap title={row.smiles} sx={{minWidth: 0}}>
+                                {row.smiles}
+                              </Typography>
                               <Button
                                 size="small"
                                 onClick={(e) => {
@@ -529,8 +563,20 @@ export default function ClassificationGrid() {
                               </Button>
                             </Box>
                             {expandedRowId !== row.id && (
-                              <Box sx={{mt: 1}}>
-                                {renderClassSummary(row)}
+                              <Box sx={{mt: 1, display: 'flex', gap: 2, alignItems: 'flex-start'}}>
+                                {/* nothing to draw for an input the backend could not read */}
+                                {row.resolved_smiles && (
+                                  <Box sx={{flex: '0 0 auto', width: 150}}>
+                                    <MoleculeStructure
+                                      smiles={row.resolved_smiles}
+                                      height={150}
+                                      width={150}
+                                    />
+                                  </Box>
+                                )}
+                                <Box sx={{flex: 1, minWidth: 0}}>
+                                  {renderClassSummary(row)}
+                                </Box>
                               </Box>
                             )}
                             {expandedRowId === row.id && (
