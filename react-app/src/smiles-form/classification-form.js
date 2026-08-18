@@ -8,6 +8,7 @@ import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
 import Chip from '@mui/material/Chip';
+import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import StartIcon from '@mui/icons-material/Start';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -30,6 +31,9 @@ import EnsembleSettings from "./ensemble-settings";
 // Everything is white, so the pieces of a prediction are told apart by an outline rather than by
 // their fill: the card carries a shadow, the panels on it carry a blue border.
 export const ACCENT = '#2a78d6';
+
+// Feedback on a prediction goes to the issue tracker, through the "wrong prediction" issue form.
+const FEEDBACK_REPO = 'https://github.com/ChEB-AI/chebifier-web';
 
 
 const panelSx = {
@@ -109,6 +113,11 @@ export default function ClassificationGrid() {
   // upload, re-run after a weight change) goes through here so they cannot drift apart.
   const runPrediction = (smiles) => {
     if (!smiles || smiles.length === 0) return;
+    const settings = {
+      models: selectedModel === 'Ensemble' ? 'Ensemble (all models)' : `single model: ${selectedModel}`,
+      weights: {...modelWeights},
+      resolve: resolveInconsistencies,
+    };
     setHasPredicted(true);
     setPredictionsLoading(true);
     setExpandedRowId(null);
@@ -137,6 +146,7 @@ export default function ClassificationGrid() {
         // what the structure drawing and the per-model insights need
         resolved_smiles: (response.data.smiles || [])[i],
         threshold: response.data.decision_threshold,
+        settings: {...settings, threshold: response.data.decision_threshold},
       })));
     }).finally(() => setPredictionsLoading(false));
   };
@@ -157,6 +167,60 @@ export default function ClassificationGrid() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelsLoaded, queuedSmiles]);
+
+  /**
+   * A link to the "wrong prediction" issue form, with the molecule and the prediction filled in.
+   * Feedback goes to the issue tracker rather than to us: nothing about a prediction is kept on
+   * the server, so the report has to carry its own context.
+   */
+  const feedbackUrl = (row) => {
+    const selected = selectedClassByRow[row.id];
+    const explanation = selected && (row.explanations || {})[selected];
+    const settings = row.settings || {};
+    const changedWeights = Object.entries(settings.weights || {})
+      .filter(([model, weight]) => Number(weight) !== Number(defaultModelWeights[model] ?? 1))
+      .map(([model, weight]) => `${model}=${weight}`);
+
+    const lines = [`Molecule (as entered): ${row.smiles}`];
+    if (row.resolved_smiles && row.resolved_smiles !== row.smiles) {
+      lines.push(`Molecule (as classified): ${row.resolved_smiles}`);
+    }
+    if (explanation) {
+      lines.push(
+        '',
+        `Selected class: ${explanation.name} (CHEBI:${selected})`,
+        `Ensemble score: ${explanation.score?.toFixed(3)} (predicted above ${settings.threshold ?? decisionThreshold})`,
+        explanation.near_miss ? 'This class was NOT predicted - it stayed below the threshold.' : '',
+        'Model contributions:',
+        ...Object.entries(explanation.models || {}).map(([model, values]) =>
+          `  ${model}: prediction ${values.prediction?.toFixed(3)}, ` +
+          `${values.vote > 0 ? 'supports' : 'opposes'}, ` +
+          `${((values.attribution || 0) * 100).toFixed(1)}% of the decision`),
+      );
+    }
+    lines.push(
+      '',
+      'Settings:',
+      `  Models: ${settings.models || 'Ensemble (all models)'}`,
+      `  Decision threshold: ${settings.threshold ?? decisionThreshold}`,
+      `  Inconsistency resolution: ${settings.resolve === false ? 'off' : 'on'}`,
+      `  Model weights: ${changedWeights.length ? changedWeights.join(', ') : 'default'}`,
+      '',
+      `All predicted classes: ${(row.predicted_parents || []).map(cls => `CHEBI:${cls}`).join(', ')}`,
+    );
+
+    const params = new URLSearchParams({
+      template: 'wrong-prediction.yml',
+      title: `[Prediction] ${explanation ? `${explanation.name} for ` : ''}${row.smiles}`.slice(0, 120),
+      molecule: row.smiles,
+      // an over-long URL is rejected by the browser rather than truncated, so cap the dump
+      prediction: lines.filter(line => line !== '').join('\n').slice(0, 4000),
+    });
+    if (explanation) {
+      params.set('classes', `CHEBI:${selected} (${explanation.name})`);
+    }
+    return `${FEEDBACK_REPO}/issues/new?${params.toString()}`;
+  };
 
   /** Whether a row has classes that came close to the threshold without reaching it. */
   const hasNearMisses = (row) =>
@@ -604,7 +668,22 @@ export default function ClassificationGrid() {
                                   />
                                 </Paper>
                                 <Paper elevation={0} sx={{...panelSx, flex: '1 1 440px', minWidth: 380}}>
-                                  <Typography variant="subtitle2" gutterBottom>Predicted class</Typography>
+                                  <Box sx={{display: 'flex', alignItems: 'center', gap: 2, mb: 1}}>
+                                    <Typography variant="subtitle2">Predicted class</Typography>
+                                    <Tooltip title="Something wrong here? Open a pre-filled report on GitHub">
+                                      <Button
+                                        size="small"
+                                        component="a"
+                                        href={feedbackUrl(row)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        startIcon={<FlagOutlinedIcon/>}
+                                        sx={{ml: 'auto'}}
+                                      >
+                                        Report
+                                      </Button>
+                                    </Tooltip>
+                                  </Box>
                                   {renderSelectedClass(row)}
                                 </Paper>
                                 <Paper elevation={0} sx={{...panelSx, flex: '1 1 280px', minWidth: 250, overflowX: 'auto'}}>

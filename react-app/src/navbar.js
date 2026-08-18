@@ -21,7 +21,7 @@ const Navbar = () => {
         <Link to="/about">About</Link>
       </li>
       <li>
-        <a href="https://github.com/ChEB-AI/Chebifier/issues">Report an Issue</a>
+        <a href="https://github.com/ChEB-AI/chebifier-web/issues">Report an Issue</a>
       </li>
     </ul>
   </div>
