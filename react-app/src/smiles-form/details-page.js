@@ -7,7 +7,6 @@ import Box from '@mui/material/Box';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Typography from '@mui/material/Typography';
 
-import {plot_ontology} from "./ontology-utils";
 import {DetailsElectra} from "./details-electra";
 import {DetailsBlockwise} from "./details-page-chemlog";
 

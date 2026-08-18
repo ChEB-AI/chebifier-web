@@ -1,3 +1,4 @@
+import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Link from '@mui/material/Link';
@@ -6,26 +7,50 @@ import axios from "axios";
 import * as React from "react";
 import {SlChemistry} from "react-icons/sl";
 
+/** One titled block of the page. Each section is its own card, so where one topic ends and the
+ * next begins is visible before a word is read. */
+const Section = ({title, children}) => (
+    <Paper sx={{
+        width: '100%',
+        p: 3,
+        mb: 2,
+        backgroundColor: '#ffffff',
+        borderRadius: 2,
+        border: '1px solid #2a78d6',
+        boxShadow: 0,
+        textAlign: 'left',
+    }}>
+        {title && (
+            <>
+                <Typography
+                    variant="h5"
+                    component="h2"
+                    sx={{display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.4rem'}}
+                >
+                    <SlChemistry style={{flexShrink: 0}}/> {title}
+                </Typography>
+                <Divider sx={{mt: 1, mb: 2}}/>
+            </>
+        )}
+        {children}
+    </Paper>
+);
+
 const About = () => {
     const [availableModels, setAvailableModels] = React.useState([]);
     const [availableModelsInfoTexts, setAvailableModelsInfoTexts] = React.useState([]);
+    const [numClasses, setNumClasses] = React.useState(null);
 
     // Load once on mount so About content is fetched when the site loads
     React.useEffect(() => {
         axios.get('/api/modelinfo').then(response => {
             setAvailableModels(response.data.available_models || []);
             setAvailableModelsInfoTexts(response.data.available_models_info_texts || []);
+            setNumClasses(response.data.n_classes || null);
         }).catch(() => {
             // silently ignore, page content still renders
         });
     }, []);
-
-    const modelList = availableModels.map((model, index) => (
-        <Box key={`model-${model}-${index}`} sx={{mb: 2}}>
-            <Typography variant="h6" component="h3" gutterBottom>{model}</Typography>
-            <Typography variant="body1" component="div" sx={{"& p": {margin: 0}}} dangerouslySetInnerHTML={{ __html: availableModelsInfoTexts[index] }} />
-        </Box>
-    ));
 
     return (
         <div className="App">
@@ -33,68 +58,97 @@ const About = () => {
                 <Box sx={{
                     width: '100%',
                     minHeight: '100vh',
-                    backgroundColor: '#f7f2e7',
+                    backgroundColor: '#ffffff',
                     display: 'flex',
                     flexDirection: 'column',
+                    alignItems: 'center',
+                    py: 2,
                 }}>
-                    <Paper sx={{
-                        width: '90%',
-                        maxWidth: '900px',
-                        mx: 'auto',
-                        my: 2,
-                        p: 2,
-                        backgroundColor: '#ffffff',
-                        borderRadius: 2,
-                        boxShadow: 3
-                    }}>
-                        <Typography variant="h4" component="h2" gutterBottom>About</Typography>
-                        <Typography variant="body1" paragraph>
-                            Chebifier is a tool for automated classification of chemicals in the <Link href="https://www.ebi.ac.uk/chebi/">ChEBI</Link> ontology.
-                            Currently, it can predict 1,700+ ChEBI classes.
-                        </Typography>
-                        <Typography variant="body1" paragraph>
-                            To run a prediction, enter a SMILES string (or multiple ones, line-separated) or upload a file. Then,
-                            hit the predict button (running the model might take a few seconds).
-                            You can get more information about a result by clicking on it.
-                        </Typography>
+                    <Box sx={{width: '90%', maxWidth: '900px', textAlign: 'left'}}>
+                        <Section>
+                            <Typography variant="h4" component="h1" gutterBottom>About Chebifier</Typography>
+                            <Typography variant="body1" paragraph>
+                                Chebifier is a tool for automated classification of chemicals in
+                                the <Link href="https://www.ebi.ac.uk/chebi/">ChEBI</Link> ontology. It currently
+                                predicts {numClasses ? numClasses.toLocaleString('en-US') : '2,000+'} ChEBI classes.
+                            </Typography>
+                            <Typography variant="body1" sx={{mb: 0}}>
+                                To run a prediction, enter a SMILES or InChI string (or several ones, one per line)
+                                or upload a file, then hit the predict button - running the models takes a few
+                                seconds. Click a result to see the molecule, the predicted part of the ontology and
+                                what each model contributed.
+                            </Typography>
+                        </Section>
 
-                        <Typography variant="h5" component="h3" gutterBottom><SlChemistry /> News</Typography>
-                        <Typography variant="body1" paragraph>
-                            <b>11/2025</b>: Added new models (Graph Attention Networks and augmented Graph Neural Networks).
-                            Improved the Ensemble weighting mechanism. Redesigned the user interface.
-                        </Typography>
-                        <Typography variant="body1" paragraph>
-                            <b>08/2025</b>: Added the ensemble. Added ChemLog, C3P and Graph Convolutional Networks.
-                        </Typography>
+                        <Section title="The Ensemble">
+                            <Typography variant="body1" paragraph>
+                                Chebifier combines machine learning models, rule-based methods and a ChEBI lookup.
+                                For every class, each model that covers it casts a vote. This vote gets weighted by how
+                                reliable it proved to be for that class on validation data and
+                                the model weight you can tune in the ensemble settings.
+                            </Typography>
+                            <Typography variant="body1" paragraph>
+                                The resulting predictions are checked for consistency with the ChEBI ontology and 
+                                corrected if necessary. The final predictions are then sorted by their confidence score and displayed to the user.
+                            </Typography>
+                            <Typography variant="body1" sx={{mb: 0}}>
+                                Clicking a class in the ontology graph of a result shows how much of the decision
+                                each model is responsible for. Details about the ensemble and its implementation can
+                                be found <Link href="https://github.com/ChEB-AI/python-chebifier">here</Link>.
+                            </Typography>
+                        </Section>
 
-                        <Typography variant="h5" component="h3" gutterBottom><SlChemistry /> The Ensemble</Typography>
-                        <Typography variant="body1" paragraph>
-                            Chebifier uses an ensemble of machine learning models and rule-based methods to classify molecules into ChEBI classes.
-                            A weighting mechanism and inconsistency resolution are applied to ensure you get the best our models can over.
-                            Details about the ensemble and the implementation can be found <Link href="https://github.com/ChEB-AI/python-chebifier">here</Link>.
-                        </Typography>
+                        <Section title="Models">
+                            <Typography variant="body1" paragraph>
+                                At the moment, the following prediction models are supported by Chebifier. You can
+                                either use them together in the ensemble or select a single model.
+                            </Typography>
+                            {availableModels.map((model, index) => (
+                                <Box key={`model-${model}-${index}`} sx={{mb: index === availableModels.length - 1 ? 0 : 2}}>
+                                    <Typography variant="subtitle1" component="h3" sx={{fontWeight: 600}}>
+                                        {model}
+                                    </Typography>
+                                    <Typography
+                                        variant="body2"
+                                        component="div"
+                                        color="text.secondary"
+                                        sx={{"& p": {margin: 0}}}
+                                        dangerouslySetInnerHTML={{__html: availableModelsInfoTexts[index]}}
+                                    />
+                                </Box>
+                            ))}
+                        </Section>
 
-                        <Typography variant="h5" component="h3" gutterBottom><SlChemistry /> Models</Typography>
-                        <Typography variant="body1" paragraph>
-                            At the moment, the following prediction models are supported by Chebifier.
-                            You can either use them in the ensemble or select a specific model.
-                        </Typography>
+                        <Section title="News">
+                            {[
+                                ['08/2026', 'Re-calibrated ensemble. Added new, better deep learning models trained on ChEBI ' +
+                                'version 252. This increased the coverage by ~500 classes. Improved user interface, added InChI support and model attributions. Model weights can now be set manually' +
+                                ''],
+                                ['02/2026', 'Added Lopster and new deep learning models.'],
+                                ['11/2025', 'Added new models (Graph Attention Networks and augmented Graph Neural ' +
+                                'Networks). Improved the ensemble weighting mechanism. Redesigned the user interface.'],
+                                ['08/2025', 'Added the ensemble. Added ChemLog, C3P and Graph Convolutional Networks.'],
+                            ].map(([date, text], index, entries) => (
+                                <Box key={date} sx={{display: 'flex', gap: 2, mb: index === entries.length - 1 ? 0 : 1.5}}>
+                                    <Typography variant="body1" sx={{fontWeight: 600, minWidth: 72, flexShrink: 0}}>
+                                        {date}
+                                    </Typography>
+                                    <Typography variant="body1">{text}</Typography>
+                                </Box>
+                            ))}
+                        </Section>
 
-                        {/* Available models inside a Paper for emphasis */}
-                        {/*<Paper sx={{p: 2, backgroundColor: '#ffffff', borderRadius: 2, boxShadow: 1}}>*/}
-                        {modelList}
-
-                        <Typography variant="h5" component="h3" sx={{mt: 3}} gutterBottom><SlChemistry /> Main Publication for Chebifier</Typography>
-                        <Typography variant="body1">
-                            Glauer, Martin, et al.: Chebifier: Automating Semantic Classification in ChEBI to Accelerate
-                            Data-driven Discovery; Digital Discovery 3.5 (2024), <Link
-                            href="https://doi.org/10.1039/D3DD00238A">Link</Link>
-                        </Typography>
-                    </Paper>
+                        <Section title="Main publication for Chebifier">
+                            <Typography variant="body1" sx={{mb: 0}}>
+                                Glauer, Martin, et al.: Chebifier: Automating Semantic Classification in ChEBI to
+                                Accelerate Data-driven Discovery; Digital Discovery 3.5 (2024), <Link
+                                href="https://doi.org/10.1039/D3DD00238A">Link</Link>
+                            </Typography>
+                        </Section>
+                    </Box>
                 </Box>
             </header>
         </div>
-
     );
 };
 

@@ -20,17 +20,24 @@ import Tooltip from '@mui/material/Tooltip';
 import {randomId} from '../lib/random-id';
 
 import DetailsPage from "./details-page";
-import {plot_ontology, MoleculeStructure} from "./ontology-utils";
-import {Molecules} from "./ontology-utils";
+import {OntologyGraph, MoleculeStructure} from "./ontology-utils";
 import {CircularProgress} from "@mui/material";
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
-import Collapse from '@mui/material/Collapse';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
+import AttributionChart from "./attribution-chart";
+import EnsembleSettings from "./ensemble-settings";
+
+// Everything is white, so the pieces of a prediction are told apart by an outline rather than by
+// their fill: the card carries a shadow, the panels on it carry a blue border.
+export const ACCENT = '#2a78d6';
+
+
+const panelSx = {
+  p: 2,
+  borderRadius: 2,
+  backgroundColor: '#ffffff',
+  border: `1px solid ${ACCENT}`,
+};
 
 export default function ClassificationGrid() {
   const [rows, setRows] = React.useState([]);
@@ -40,22 +47,23 @@ export default function ClassificationGrid() {
   const [availableModelsInfoTexts, setAvailableModelsInfoTexts] = React.useState([]);
   const [selectedModel, setSelectedModel] = React.useState('Ensemble');
   const [modelsLoaded, setModelsLoaded] = React.useState(false);
+  // model weights: how much say each model has in the ensemble vote (tunable in "Ensemble settings")
+  const [defaultModelWeights, setDefaultModelWeights] = React.useState({});
+  const [modelWeights, setModelWeights] = React.useState({});
+  const [decisionThreshold, setDecisionThreshold] = React.useState(0.5);
 
   const [inputText, setInputText] = React.useState("");
   const [predictionsLoading, setPredictionsLoading] = React.useState(false);
   const [hasPredicted, setHasPredicted] = React.useState(false);
   const [expandedRowId, setExpandedRowId] = React.useState(null);
-  // Track which model option was active when predictions were triggered
-  const [lastPredictedModel, setLastPredictedModel] = React.useState('Ensemble');
   // If user uploads before models are loaded, queue SMILES and auto-run when ready
   const [queuedSmiles, setQueuedSmiles] = React.useState(null);
-  // map of `${rowId}-${classIdx}` -> boolean for per-chip "Why this class?" panel
-  const [openWhyMap, setOpenWhyMap] = React.useState({});
-  const toggleWhy = (rowId, classIdx) => () => {
-    const key = `${rowId}-${classIdx}`;
-    setOpenWhyMap(prev => ({...prev, [key]: !prev[key]}));
-  };
-  const isWhyOpen = (rowId, classIdx) => !!openWhyMap[`${rowId}-${classIdx}`];
+  // map of rowId -> the ChEBI id picked in that row's ontology graph
+  const [selectedClassByRow, setSelectedClassByRow] = React.useState({});
+  // map of rowId -> whether that row's graph also shows the classes that just missed the threshold
+  const [nearMissesByRow, setNearMissesByRow] = React.useState({});
+  const selectClass = (rowId) => (chebiId) =>
+    setSelectedClassByRow(prev => ({...prev, [rowId]: chebiId}));
 
   // Ref to hidden file input for uploading SMILES
   const fileInputRef = React.useRef(null);
@@ -77,154 +85,139 @@ export default function ClassificationGrid() {
     }
   };
 
-  const selectedModels = buildSelectedModels();
-
-
-  if (availableModels.length === 0) {
+  React.useEffect(() => {
     axios.get('/api/modelinfo').then(response => {
+      const weights = response.data.default_model_weights || {};
       setAvailableModels(response.data.available_models);
       setAvailableModelsInfoTexts(response.data.available_models_info_texts);
+      setDefaultModelWeights(weights);
+      setModelWeights({...weights});
+      if (typeof response.data.decision_threshold === 'number') {
+        setDecisionThreshold(response.data.decision_threshold);
+      }
       setModelsLoaded(true);
-
     });
-  }
+  }, []);
+
+  // Single entry point for classification: every trigger (button, Ctrl+Enter, upload, queued
+  // upload, re-run after a weight change) goes through here so they cannot drift apart.
+  const runPrediction = (smiles) => {
+    if (!smiles || smiles.length === 0) return;
+    setHasPredicted(true);
+    setPredictionsLoading(true);
+    setExpandedRowId(null);
+    setDetailsByRow({});
+    setSelectedClassByRow({});
+    setNearMissesByRow({});
+    return axios({
+      url: '/api/classify',
+      method: 'post',
+      data: {
+        smiles: smiles,
+        ontology: true,
+        selectedModels: buildSelectedModels(),
+        modelWeights: modelWeights
+      }
+    }).then(response => {
+      setRows((old) => old.map((row, i) => ({
+        ...row,
+        direct_parents: response.data.direct_parents[i],
+        predicted_parents: response.data.predicted_parents[i],
+        ontology: response.data.ontology[i],
+        explanations: (response.data.explanations || [])[i],
+        // what the backend read the input as - an InChI comes back translated to SMILES, which is
+        // what the structure drawing and the per-model insights need
+        resolved_smiles: (response.data.smiles || [])[i],
+      })));
+    }).finally(() => setPredictionsLoading(false));
+  };
+
+  const predictFromInput = () => {
+    const smiles = inputText.trim().replace(/\r/g, '').split('\n').map(s => s.trim()).filter(Boolean);
+    if (smiles.length === 0) return;
+    addRows(smiles);
+    runPrediction(smiles);
+  };
 
   // If user uploaded SMILES before models were ready, auto-run once models are loaded
   React.useEffect(() => {
     if (modelsLoaded && queuedSmiles && !predictionsLoading) {
-      setLastPredictedModel(selectedModel);
-      setHasPredicted(true);
-      setPredictionsLoading(true);
-      axios({
-        url: '/api/classify',
-        method: 'post',
-        data: {
-          smiles: queuedSmiles,
-          ontology: true,
-          selectedModels: selectedModels
-        }
-      }).then(response => {
-        setRows((old) => old.map((row, i) => ({
-          ...row,
-          direct_parents: response.data.direct_parents[i],
-          predicted_parents: response.data.predicted_parents[i],
-          ontology: response.data.ontology[0][i],
-        })));
-      }).finally(() => {
-        setPredictionsLoading(false);
-        setQueuedSmiles(null);
-      });
+      const smiles = queuedSmiles;
+      setQueuedSmiles(null);
+      runPrediction(smiles);
     }
-  }, [modelsLoaded, queuedSmiles, predictionsLoading, selectedModels]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelsLoaded, queuedSmiles]);
 
-  const renderClasses = (params) => {
-    const data = params.value;
-    const row = params.row || {};
-    const isExpanded = row.id === expandedRowId;
+  /** Whether a row has classes that came close to the threshold without reaching it. */
+  const hasNearMisses = (row) =>
+    Object.values(row.explanations || {}).some((explanation) => explanation.near_miss);
 
-    if (data === null) {
-      return <Alert severity="error">Could not process input!</Alert>
+  /** Summary of a collapsed row: the most specific classes the ensemble predicted. */
+  const renderClassSummary = (row) => {
+    const data = row.direct_parents;
+    if (data === null) return <Alert severity="error">Could not process input!</Alert>;
+    if (!data || (data.length === 0 && !predictionsLoading)) {
+      return <Alert severity="info">No classes predicted.</Alert>;
     }
-
-    if (data.length === 0 && !predictionsLoading) {
-      return <Alert severity="info">No classes predicted.</Alert>
-    }
-
-    // Collapsed view: chips flowing inline
-    const collapsedView = (
+    return (
       <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1}}>
         {data.map((x, idx) => (
-          <Box key={`class-collapsed-${row.id}-${idx}`} sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-            <Chip
-              component="a"
-              href={`http://purl.obolibrary.org/obo/CHEBI_${x[0]}`}
-              label={x[1]}
-              clickable
-              target="_blank"
-            />
-          </Box>
+          <Chip
+            key={`class-${row.id}-${idx}`}
+            component="a"
+            href={`http://purl.obolibrary.org/obo/CHEBI_${x[0]}`}
+            label={x[1]}
+            clickable
+            target="_blank"
+          />
         ))}
       </Box>
     );
+  };
 
-    // Expanded view: one class per row with a Why button and collapsible table
-    const expandedView = (
-      <Box sx={{display: 'flex', flexDirection: 'column', gap: 1}}>
-        {data.map((x, idx) => {
-          const whyOpen = isWhyOpen(row.id, idx);
-          return (
-            <Box key={`class-expanded-${row.id}-${idx}`} sx={{borderRadius: 1, border: '1px solid #eee'}}>
-              <Box sx={{display: 'flex', alignItems: 'center', gap: 1, p: 1}}>
-                <Chip
-                  component="a"
-                  href={`http://purl.obolibrary.org/obo/CHEBI_${x[0]}`}
-                  label={x[1]}
-                  clickable
-                  target="_blank"
-                />
-                {lastPredictedModel === 'Ensemble' && (
-                  <Button size="small" onClick={toggleWhy(row.id, idx)} sx={{ml: 'auto'}}>
-                    {whyOpen ? 'Hide' : 'Why this class?'}
-                  </Button>
-                )}
-              </Box>
-              <Collapse in={whyOpen} timeout="auto" unmountOnExit>
-                <Box sx={{px: 1, pb: 1, overflowX: 'auto'}}>
-                  <Typography variant="body2">
-                    The ensemble decides by a weighted voting of models.
-                    Each models receives a score (the product of confidence, trust and model weight).
-                    Scores of models that make positive predictions are added, scores of models that make negative predictions are substracted.
-                    If the sum is positive, the ensemble predicts this class.
-                  </Typography>
-                  <Table size="small" aria-label="why-this-class" sx={{minWidth: 700}}>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Model</TableCell>
-                        <TableCell>Prediction</TableCell>
-                        <TableCell>Confidence</TableCell>
-                        <TableCell>Trust</TableCell>
-                        <TableCell>Model weight</TableCell>
-                        <TableCell>Model score</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {Object.entries(x[2] || {}).map(([k, v]) => (
-                        <TableRow key={`why-${row.id}-${idx}-${k}`}
-                                  style={{backgroundColor: v?.model_score > 0 ? '#a8f099' : '#f0a699'}}>
-                          <TableCell>{k}</TableCell>
-                          <TableCell>{String(v?.prediction)}</TableCell>
-                          <TableCell>{typeof v?.confidence === 'number' ? v.confidence.toFixed(3) : String(v?.confidence)}</TableCell>
-                          <TableCell>{typeof v?.trust === 'number' ? v.trust.toFixed(3) : String(v?.trust)}</TableCell>
-                          <TableCell>{typeof v?.model_weight === 'number' ? v.model_weight.toFixed(3) : String(v?.model_weight)}</TableCell>
-                          <TableCell>{typeof v?.model_score === 'number' ? v.model_score.toFixed(3) : String(v?.model_score)}</TableCell>
-                        </TableRow>
-                      ))}
-                      <TableRow>
-                        <TableCell><b>Ensemble</b></TableCell>
-                        <TableCell><b>true</b></TableCell>
-                        <TableCell></TableCell>
-                        <TableCell></TableCell>
-                        <TableCell></TableCell>
-                        <TableCell><b>{typeof x[3] === 'number' ? x[3].toFixed(3) : String(x[3])}</b></TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </Box>
-              </Collapse>
-            </Box>
-          );
-        })}
-      </Box>
-    );
+  /** The class selected in the ontology graph, and why the ensemble predicted it. */
+  const renderSelectedClass = (row) => {
+    if (row.direct_parents === null) return <Alert severity="error">Could not process input!</Alert>;
+    const selected = selectedClassByRow[row.id];
+    const explanation = selected && (row.explanations || {})[selected];
 
+    if (!selected) {
+      return (
+        <Typography variant="body2" color="text.secondary">
+          Click on a node in the ontology graph.
+        </Typography>
+      );
+    }
+    if (!explanation) {
+      // the top class is drawn but never predicted - it holds for every molecule
+      return (
+        <Typography variant="body2" color="text.secondary">
+          Every molecule is a molecular entity, so the ensemble does not predict this class.
+        </Typography>
+      );
+    }
     return (
-      <Box>
-        <Collapse in={!isExpanded} timeout="auto" unmountOnExit>
-          {collapsedView}
-        </Collapse>
-        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-          {expandedView}
-        </Collapse>
+      <Box sx={{display: 'flex', flexDirection: 'column', gap: 1.5}}>
+        <Box sx={{display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap'}}>
+          <Chip
+            component="a"
+            href={`http://purl.obolibrary.org/obo/CHEBI_${selected}`}
+            label={explanation.name}
+            clickable
+            target="_blank"
+          />
+          {explanation.near_miss && (
+            <Typography variant="caption" color="text.secondary">
+              not predicted - the score stayed below the threshold
+            </Typography>
+          )}
+        </Box>
+        <AttributionChart
+          calculations={explanation.models}
+          netScore={explanation.score}
+          threshold={decisionThreshold}
+        />
       </Box>
     );
   };
@@ -253,7 +246,10 @@ export default function ClassificationGrid() {
       const thisRow = rows.find((row) => row.id === id);
       if (!thisRow) return;
       setDetailsLoading(id);
-      axios.post('/api/details', {smiles: thisRow.smiles, selectedModels: buildSelectedModels()}).then(response => {
+      axios.post('/api/details', {
+        smiles: thisRow.resolved_smiles || thisRow.smiles,
+        selectedModels: buildSelectedModels()
+      }).then(response => {
         const detailObj = {
           models_info: response.data.models,
           chebi: response.data.classification,
@@ -285,25 +281,7 @@ export default function ClassificationGrid() {
       addRows(smiles);
       // Auto-run prediction if models are loaded and we're not already loading
       if (modelsLoaded && !predictionsLoading) {
-        setLastPredictedModel(selectedModel);
-        setHasPredicted(true);
-        setPredictionsLoading(true);
-        axios({
-          url: '/api/classify',
-          method: 'post',
-          data: {
-            smiles: smiles,
-            ontology: true,
-            selectedModels: selectedModels
-          }
-        }).then(response => {
-          setRows((old) => old.map((row, i) => ({
-            ...row,
-            direct_parents: response.data.direct_parents[i],
-            predicted_parents: response.data.predicted_parents[i],
-            ontology: response.data.ontology[0][i],
-          })));
-        }).finally(() => setPredictionsLoading(false));
+        runPrediction(smiles);
       } else {
         // Queue the SMILES to auto-run once models are loaded / ready
         setQueuedSmiles(smiles);
@@ -318,7 +296,7 @@ export default function ClassificationGrid() {
     event.preventDefault();
     const fileData = JSON.stringify(rows.map((r) => ({
       "smiles": r["smiles"],
-      "direct_parents": r["direct_parents"].map(element => [element[0], element[1]]),
+      "direct_parents": (r["direct_parents"] || []).map(element => [element[0], element[1]]),
       "predicted_parents": r["predicted_parents"],
     })).filter((d) => d.direct_parents?.length >= 0));
     const blob = new Blob([fileData], {type: "text/plain"});
@@ -348,13 +326,14 @@ export default function ClassificationGrid() {
             <Box sx={{
               width: '100%',
               minHeight: '100vh',
-              backgroundColor: '#f7f2e7',
+              backgroundColor: '#ffffff',
               display: 'flex',
               flexDirection: 'column'
             }}>
               <Box sx={{
                 padding: 2,
-                backgroundColor: '#f0f0f0',
+                backgroundColor: '#ffffff',
+                border: `1px solid ${ACCENT}`,
                 marginBottom: 2,
                 borderRadius: 1,
                 marginLeft: 2,
@@ -384,7 +363,7 @@ export default function ClassificationGrid() {
                 <Box sx={{width: 'auto', height: 'auto'}}>
                   <Box sx={{p: 2, width: 'auto', minWidth: '700px', display: 'inline-flex', flexDirection: 'column'}}>
                     <TextField
-                      label="Enter SMILES (one per line)"
+                      label="Enter SMILES or InChI (one per line)"
                       placeholder="Cn1c(=O)c2c(ncn2C)n(C)c1=O"
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
@@ -392,29 +371,7 @@ export default function ClassificationGrid() {
                         if (e.key === 'Enter' && e.ctrlKey) {
                           e.preventDefault();
                           if (!modelsLoaded || predictionsLoading) return;
-                          const smiles = inputText.trim().replace(/\r/g, '').split('\n').map(s => s.trim()).filter(Boolean);
-                          if (smiles.length === 0) return;
-                          // initialize rows and run classification
-                          addRows(smiles);
-                          setLastPredictedModel(selectedModel);
-                          setHasPredicted(true);
-                          setPredictionsLoading(true);
-                          axios({
-                            url: '/api/classify',
-                            method: 'post',
-                            data: {
-                              smiles: smiles,
-                              ontology: true,
-                              selectedModels: selectedModels
-                            }
-                          }).then(response => {
-                            setRows((old) => old.map((row, i) => ({
-                              ...row,
-                              direct_parents: response.data.direct_parents[i],
-                              predicted_parents: response.data.predicted_parents[i],
-                              ontology: response.data.ontology[0][i],
-                            })));
-                          }).finally(() => setPredictionsLoading(false));
+                          predictFromInput();
                         }
                       }}
                       fullWidth
@@ -467,6 +424,20 @@ export default function ClassificationGrid() {
                           ))}
                         </Select>
                       </FormControl>
+                      {/* model weights only have an effect when the models actually vote against
+                          each other, i.e. when the ensemble is selected */}
+                      {selectedModel === 'Ensemble' && (
+                        <EnsembleSettings
+                          models={availableModels}
+                          weights={modelWeights}
+                          defaultWeights={defaultModelWeights}
+                          disabled={!modelsLoaded || predictionsLoading}
+                          canRerun={rows.length > 0}
+                          onChange={(model, value) => setModelWeights(prev => ({...prev, [model]: value}))}
+                          onReset={() => setModelWeights({...defaultModelWeights})}
+                          onRerun={() => runPrediction(rows.map(row => row.smiles))}
+                        />
+                      )}
                       {/* Hidden file input for SMILES upload */}
                       <input
                         type="file"
@@ -475,7 +446,7 @@ export default function ClassificationGrid() {
                         ref={fileInputRef}
                         onChange={handleUpload}
                       />
-                      <Tooltip title="Upload SMILES from file (one per line)">
+                      <Tooltip title="Upload SMILES or InChI strings from file (one per line)">
                         <span>
                           <Button
                             variant="outlined"
@@ -504,36 +475,7 @@ export default function ClassificationGrid() {
                       <Button
                         variant="contained"
                         sx={{ml: 'auto'}}
-                        onClick={() => {
-                          const smiles = inputText.trim().replace(/\r/g, '').split('\n').map(s => s.trim()).filter(Boolean);
-                          if (smiles.length === 0) return;
-                          const ids = smiles.map(() => randomId());
-                          setRows(smiles.map((s, i) => ({
-                            id: ids[i],
-                            smiles: s,
-                            direct_parents: [],
-                            predicted_parents: []
-                          })));
-                          setLastPredictedModel(selectedModel);
-                          setHasPredicted(true);
-                          setPredictionsLoading(true);
-                          axios({
-                            url: '/api/classify',
-                            method: 'post',
-                            data: {
-                              smiles: smiles,
-                              ontology: true,
-                              selectedModels: selectedModels
-                            }
-                          }).then(response => {
-                            setRows((old) => old.map((row, i) => ({
-                              ...row,
-                              direct_parents: response.data.direct_parents[i],
-                              predicted_parents: response.data.predicted_parents[i],
-                              ontology: response.data.ontology[0][i],
-                            })));
-                          }).finally(() => setPredictionsLoading(false));
-                        }}
+                        onClick={predictFromInput}
                         disabled={predictionsLoading || !modelsLoaded}
                         startIcon={predictionsLoading ? <CircularProgress size={20}/> : <SlChemistry/>}
                       >
@@ -546,22 +488,19 @@ export default function ClassificationGrid() {
               </Paper>
 
               {hasPredicted && (
-                <Paper sx={{
-                  mt: 2,
-                  width: '90%',
-                  mx: 'auto',
-                  p: 2,
-                  backgroundColor: '#ffffff',
-                  borderRadius: 2,
-                  boxShadow: 1,
-                  overflowX: 'auto'
-                }}>
+                <Box sx={{mt: 2, width: '90%', mx: 'auto'}}>
                   {rows.length > 0 && (
                     <Box>
                       {rows.map((row) => {
                         const canExpand = (row.direct_parents) && !predictionsLoading;
                         return (
-                          <Paper key={row.id} sx={{p: 2, mb: 1}}
+                          <Paper key={row.id} sx={{
+                            p: 2, mb: 2, borderRadius: 2, boxShadow: 2,
+                            backgroundColor: '#ffffff', overflowX: 'auto',
+                            // the app centres text globally, which leaves headings and the
+                            // attribution rows floating over their columns
+                            textAlign: 'left'
+                          }}
                                  onClick={(e) => {
                                    if (!canExpand) return;
                                    const t = e.target;
@@ -591,24 +530,42 @@ export default function ClassificationGrid() {
                             </Box>
                             {expandedRowId !== row.id && (
                               <Box sx={{mt: 1}}>
-                                {renderClasses({value: row.direct_parents, row})}
+                                {renderClassSummary(row)}
                               </Box>
                             )}
                             {expandedRowId === row.id && (
                               <Box sx={{mt: 2, display: 'flex', flexWrap: 'wrap', gap: 2}}>
-                                <Paper sx={{p: 2, flex: '1 1 700px', minWidth: 400}}>
-                                  <Typography variant="subtitle2" gutterBottom>Predicted classes</Typography>
-                                  {renderClasses({value: row.direct_parents, row})}
+                                {/* the graph and the class it selects belong together, so they sit
+                                    side by side */}
+                                <Paper elevation={0} sx={{...panelSx, flex: '3 1 700px', minWidth: 420, overflowX: 'auto'}}>
+                                  <Box sx={{display: 'flex', alignItems: 'center', gap: 2, mb: 1}}>
+                                    <Typography variant="subtitle2">Ontology graph</Typography>
+                                    {hasNearMisses(row) && (
+                                      <Button
+                                        size="small"
+                                        onClick={() => setNearMissesByRow(prev => ({...prev, [row.id]: !prev[row.id]}))}
+                                        sx={{ml: 'auto'}}
+                                      >
+                                        {nearMissesByRow[row.id] ? 'Hide near-misses' : 'Show near-misses'}
+                                      </Button>
+                                    )}
+                                  </Box>
+                                  <OntologyGraph
+                                    graph={row.ontology}
+                                    selected={selectedClassByRow[row.id] || null}
+                                    onSelect={selectClass(row.id)}
+                                    showNearMisses={!!nearMissesByRow[row.id]}
+                                  />
                                 </Paper>
-                                <Paper sx={{p: 2, flex: '1 1 280px', minWidth: 250, overflowX: 'auto'}}>
+                                <Paper elevation={0} sx={{...panelSx, flex: '1 1 440px', minWidth: 380}}>
+                                  <Typography variant="subtitle2" gutterBottom>Predicted class</Typography>
+                                  {renderSelectedClass(row)}
+                                </Paper>
+                                <Paper elevation={0} sx={{...panelSx, flex: '1 1 280px', minWidth: 250, overflowX: 'auto'}}>
                                   <Typography variant="subtitle2" gutterBottom>Molecular graph</Typography>
-                                  <MoleculeStructure smiles={row.smiles} height={250} width={250}/>
+                                  <MoleculeStructure smiles={row.resolved_smiles || row.smiles} height={250} width={250}/>
                                 </Paper>
-                                <Paper sx={{p: 2, flex: '2 1 820px', minWidth: 820, overflowX: 'auto'}}>
-                                  <Typography variant="subtitle2" gutterBottom>Ontology graph</Typography>
-                                  {plot_ontology(row.ontology, true, false)}
-                                </Paper>
-                                <Paper sx={{p: 2, flex: '1 1 600px', minWidth: 500, overflow: 'hidden'}}>
+                                <Paper elevation={0} sx={{...panelSx, flex: '1 1 600px', minWidth: 500, overflow: 'hidden'}}>
                                   <Typography variant="subtitle2" gutterBottom>Model-specific insights</Typography>
                                   {detailsByRow[row.id] ? (
                                     <DetailsPage detail={detailsByRow[row.id]}
@@ -626,10 +583,9 @@ export default function ClassificationGrid() {
                           </Paper>
                         );
                       })}
-                      <Divider sx={{my: 2}}/>
                     </Box>
                   )}
-                </Paper>
+                </Box>
               )}
 
             </Box>

@@ -139,3 +139,4 @@ data/
 backend/data/
 .vscode/
 backend/config.json
+.playwright-mcp/

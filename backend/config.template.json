@@ -1,12 +1,18 @@
 {
-    "TESTING":true,
-    "CHEBI_JSON": "path-to-chebi-export.json",
-    "MODELS": {
-        "My model": {
-            "type": "chebifier type (e.g. electra)",
-            "ckpt_path": "path/to/checkpoint.ckpt",
-            "batch_size": 32,
-            "classwise_weights_path": "path/to/trust.json"
-        }
+  "TESTING": true,
+  "CHEBI_VERSION": 252,
+  "CHEBI_GRAPH": "path/to/chebi_graph_v252.pkl (optional, downloaded from Hugging Face if missing)",
+  "ENSEMBLE_DIR": "directory holding the ensemble calibration (prediction_thresholds.yaml, <model>_classwise_f1.txt, best_hyperparameters.csv)",
+  "ENSEMBLE_CLASSES": "file listing the classes the ensemble was calibrated on, one per line",
+  "INCONSISTENCY_RESOLUTION": "score-based",
+  "MODELS": {
+    "My model": {
+      "type": "chebifier model type (e.g. gat, chemlog, lopster_clingo, c3p, chebi_lookup)",
+      "ckpt_path": "path/to/checkpoint.ckpt",
+      "batch_size": 16,
+      "calibration_name": "name the calibration files in ENSEMBLE_DIR were written under (defaults to the key of this entry)",
+      "model_weight": 1,
+      "description": "shown in the model info panel of the web app"
     }
+  }
 }

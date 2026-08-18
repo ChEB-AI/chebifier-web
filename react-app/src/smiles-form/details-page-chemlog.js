@@ -25,7 +25,6 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import {styled} from '@mui/material/styles';
 
-import {plot_ontology} from "./ontology-utils";
 import Alert from "@mui/material/Alert";
 
 
