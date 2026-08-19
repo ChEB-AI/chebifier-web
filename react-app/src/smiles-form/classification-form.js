@@ -190,7 +190,7 @@ export default function ClassificationGrid() {
         '',
         `Selected class: ${explanation.name} (CHEBI:${selected})`,
         `Ensemble score: ${explanation.score?.toFixed(3)} (predicted above ${settings.threshold ?? decisionThreshold})`,
-        explanation.near_miss ? 'This class was NOT predicted - it stayed below the threshold.' : '',
+        explanation.near_miss ? 'This class was NOT predicted' : '',
         'Model contributions:',
         ...Object.entries(explanation.models || {}).map(([model, values]) =>
           `  ${model}: prediction ${values.prediction?.toFixed(3)}, ` +
@@ -282,7 +282,7 @@ export default function ClassificationGrid() {
           />
           {explanation.near_miss && (
             <Typography variant="caption" color="text.secondary">
-              not predicted - the score stayed below the threshold
+              not predicted
             </Typography>
           )}
         </Box>
@@ -401,25 +401,10 @@ export default function ClassificationGrid() {
               minHeight: '100vh',
               backgroundColor: '#ffffff',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              paddingTop: 2,
+              paddingBottom: 4
             }}>
-              <Box sx={{
-                padding: 2,
-                backgroundColor: '#ffffff',
-                border: `1px solid ${ACCENT}`,
-                marginBottom: 2,
-                borderRadius: 1,
-                marginLeft: 2,
-                marginRight: 2
-              }}>
-                <Typography variant="h6" align="left" color="textPrimary" gutterBottom>
-                  If you like Chebifier, please cite: Glauer, Martin, et al. "Chebifier: Automating Semantic
-                  Classification in ChEBI to Accelerate Data-driven Discovery."
-                  <a href={"https://pubs.rsc.org/en/content/articlehtml/2024/dd/d3dd00238a"}>Digital Discovery, 2024, 3,
-                    896</a>.
-                </Typography>
-              </Box>
-
               <Paper sx={{
                 width: 'fit-content',
                 height: 'fit-content',
@@ -665,7 +650,7 @@ export default function ClassificationGrid() {
                                 <Paper elevation={0} sx={{...panelSx, flex: '1 1 440px', minWidth: 380}}>
                                   <Box sx={{display: 'flex', alignItems: 'center', gap: 2, mb: 1}}>
                                     <Typography variant="subtitle2">Predicted class</Typography>
-                                    <Tooltip title="Something wrong here? Open a pre-filled report on GitHub">
+                                    <Tooltip title="Do you think this is wrong? Report this classification on GitHub">
                                       <Button
                                         size="small"
                                         component="a"

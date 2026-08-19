@@ -72,7 +72,8 @@ const About = () => {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    py: 2,
+                    pt: 2,
+                    pb: 4,
                 }}>
                     <Box sx={{width: '90%', maxWidth: '900px', textAlign: 'left'}}>
                         <Section>
@@ -80,13 +81,17 @@ const About = () => {
                             <Typography variant="body1" paragraph>
                                 Chebifier is a tool for automated classification of chemicals in
                                 the <Link href="https://www.ebi.ac.uk/chebi/">ChEBI</Link> ontology. It currently
-                                predicts {numClasses ? numClasses.toLocaleString('en-US') : '2,000+'} ChEBI classes.
+                                predicts {numClasses ? numClasses.toLocaleString('en-US') : '2,200+'} ChEBI classes.
                             </Typography>
                             <Typography variant="body1" sx={{mb: 0}}>
-                                To run a prediction, enter a SMILES or InChI string (or several ones, one per line)
-                                or upload a file, then hit the predict button - running the models takes a few
-                                seconds. Click a result to see the molecule, the predicted part of the ontology and
-                                what each model contributed.
+                                To run a prediction, enter SMILES or InChI strings (one per line)
+                                or upload a file. Running the models might take a few
+                                seconds. Click on a result for more details about the prediction.
+                            </Typography>
+                            <Typography variant="body1" paragraph>
+                                Chebifier is developed as part of the <Link href="https://hastingslab.org/projects/2_project/">StrOntEx project</Link>.
+                                For more information on Chebifier, checkout the <Link href="https://github.com/ChEB-AI/python-chebifier">GitHub repository</Link> and 
+                                our <Link href="https://www.researchsquare.com/article/rs-9023090/v1">latest publication (Flügel et al, 2026: Chebifier 2)</Link>.
                             </Typography>
                         </Section>
 
@@ -95,7 +100,7 @@ const About = () => {
                                 Chebifier combines machine learning models, rule-based methods and a ChEBI lookup.
                                 For every class, each model that covers it casts a vote. This vote gets weighted by how
                                 reliable it proved to be for that class on validation data and
-                                the model weight you can tune in the ensemble settings.
+                                the model weight you can modify in the ensemble settings.
                             </Typography>
                             <Typography variant="body1" paragraph>
                                 The resulting predictions are checked for consistency with the ChEBI ontology and 
@@ -104,10 +109,9 @@ const About = () => {
                             <Typography variant="body1" sx={{mb: 0}}>
                                 Clicking a class in the ontology graph of a result shows how much of the decision
                                 each model is responsible for. The ensemble settings also let you trade precision
-                                against recall - an experimental feature, whose percentages come from the ChEBI test
-                                set and will be optimistic for unusual molecules and rare classes. Details about the
-                                ensemble and its implementation can be
-                                found <Link href="https://github.com/ChEB-AI/python-chebifier">here</Link>.
+                                against recall. More precision means that the ensemble is more conservative in its predictions.
+                                More recall equates to a more daring ensemble. Note that these values are based on the ChEBI test
+                                set and will be optimistic for unusual molecules and rare classes. 
                             </Typography>
                         </Section>
 
@@ -163,16 +167,11 @@ const About = () => {
                             {stats?.molecules > 0 && (
                                 <Typography variant="body1" paragraph>
                                     Chebifier has classified {stats.molecules.toLocaleString('en-US')} molecules
-                                    {stats.since ? ` since ${formatDate(stats.since)}` : ''}. That count is all we
-                                    keep: the number of molecules per day, and nothing about the molecules
-                                    themselves.
+                                    {stats.since ? ` since ${formatDate(stats.since)}` : ''}. 
                                 </Typography>
                             )}
                             <Typography variant="body1" sx={{mb: 0}}>
-                                Chebifier does not collect or store the molecules you submit. A SMILES or InChI
-                                string you enter is used to compute the prediction you asked for and nothing else:
-                                it is never written to disk, never kept after the request, and never passed on to
-                                anyone else.
+                                Appart from the overall count, Chebifier does not store any personal information about you.
                             </Typography>
                         </Section>
                     </Box>

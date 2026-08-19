@@ -3,10 +3,7 @@
 Chebifier is a tool for automated classification of chemicals in the [ChEBI](https://www.ebi.ac.uk/chebi/) ontology. This repository only hosts the front end of Chebifier. For the classification itself, see [python-chebifier](https://github.com/ChEB-AI/python-chebifier).
 
 ## News
-- 2026/08/18: Moved to the calibrated ensembles of python-chebifier (WMV-F1 on ChEBI v252 3-STAR,
-  score-based inconsistency resolution). Predictions now come with a 0-1 ensemble score and a
-  per-model attribution, model weights can be tuned per prediction in "Ensemble settings", and
-  molecules can be entered as InChI as well as SMILES.
+- 2026/08/18: Recalibrated ensemble (with ~500 new classes), added new deep learning models (v252) and model attributions. Now supports InChI input, user feedback, and extended ensemble settings.
 - 2026/02/16: Added Lopster and new deep learning models.
 - 2025/11/11: Fixed processing error for GNNs.
 - 2025/11/05: Added new models (v244, including GAT, 3-STAR models and augmented GNNs), redesigned frontend.
