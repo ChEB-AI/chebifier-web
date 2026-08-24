@@ -40,6 +40,10 @@ Besides the models, the configuration points at the calibration of the ensemble:
  * `ENSEMBLE_CLASSES`: the class list the ensemble was calibrated on, one ChEBI id per line. The class-wise F1 scores are stored positionally, so this list has to match the calibration exactly.
  * `CHEBI_GRAPH`: the ChEBI graph pickle the calibration was built against. If the file is missing, it is downloaded from [Hugging Face](https://huggingface.co/datasets/chebai/chebifier).
  * `INCONSISTENCY_RESOLUTION`: `score-based` (the default) or `none`.
+ * `BEST_MODEL` (optional): the `MODELS` key that the `best_model` alias resolves to. API clients
+   that want the strongest single model can select `best_model` instead of naming it, so the model
+   can be swapped out without breaking them. A name that is not in `MODELS` is a startup error;
+   without the setting the alias simply does not exist.
  * `STATS_DB` (optional): SQLite file the number of classified molecules is counted in, shown in the
    app as "x molecules classified since ...". Only a per-day count is stored, never the molecules.
    Under uWSGI the request is answered by one of several worker processes, so the count cannot live

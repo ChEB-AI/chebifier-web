@@ -3,19 +3,16 @@ import axios from "axios";
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
-import Divider from '@mui/material/Divider';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import TextField from '@mui/material/TextField';
 import Chip from '@mui/material/Chip';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
-import StartIcon from '@mui/icons-material/Start';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DownloadIcon from '@mui/icons-material/Download';
 import {SlChemistry} from "react-icons/sl";
 // import Modal from '@mui/material/Modal';
-import FormLabel from '@mui/material/FormLabel';
 import FormControl from '@mui/material/FormControl';
 import Tooltip from '@mui/material/Tooltip';
 import {randomId} from '../lib/random-id';
@@ -25,6 +22,7 @@ import {OntologyGraph, MoleculeStructure} from "./ontology-utils";
 import {CircularProgress} from "@mui/material";
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
+import ListSubheader from '@mui/material/ListSubheader';
 import AttributionChart from "./attribution-chart";
 import EnsembleSettings from "./ensemble-settings";
 
@@ -48,7 +46,9 @@ export default function ClassificationGrid() {
   const [detailsByRow, setDetailsByRow] = React.useState({});
 
   const [availableModels, setAvailableModels] = React.useState([]);
-  const [availableModelsInfoTexts, setAvailableModelsInfoTexts] = React.useState([]);
+  // the backend names the strongest single model rather than the app hardcoding it, so swapping
+  // the models out does not leave a stale recommendation behind
+  const [bestModel, setBestModel] = React.useState(null);
   const [selectedModel, setSelectedModel] = React.useState('Ensemble');
   const [modelsLoaded, setModelsLoaded] = React.useState(false);
   // model weights: how much say each model has in the ensemble vote (tunable in "Ensemble settings")
@@ -62,6 +62,7 @@ export default function ClassificationGrid() {
 
   const [inputText, setInputText] = React.useState("");
   const [predictionsLoading, setPredictionsLoading] = React.useState(false);
+  const [predictionError, setPredictionError] = React.useState(null);
   const [hasPredicted, setHasPredicted] = React.useState(false);
   const [expandedRowId, setExpandedRowId] = React.useState(null);
   // If user uploads before models are loaded, queue SMILES and auto-run when ready
@@ -76,12 +77,18 @@ export default function ClassificationGrid() {
   // Ref to hidden file input for uploading SMILES
   const fileInputRef = React.useRef(null);
 
+  // a model the user has turned down to 0 takes no part in the prediction, so it is left out of
+  // the request altogether - that way it is absent from the per-model insights too, rather than
+  // showing up as a model that was consulted and then ignored
+  const isExcluded = (model) => Number(modelWeights[model] ?? defaultModelWeights[model] ?? 1) === 0;
+  const runningModels = () => availableModels.filter(m => !isExcluded(m));
+
   const buildSelectedModels = () => {
     // Backend expects an object map of modelName -> boolean
     if (selectedModel === 'Ensemble') {
       const allTrue = {};
       availableModels.forEach(m => {
-        allTrue[m] = true;
+        allTrue[m] = !isExcluded(m);
       });
       return allTrue;
     } else {
@@ -97,7 +104,7 @@ export default function ClassificationGrid() {
     axios.get('/api/modelinfo').then(response => {
       const weights = response.data.default_model_weights || {};
       setAvailableModels(response.data.available_models);
-      setAvailableModelsInfoTexts(response.data.available_models_info_texts);
+      setBestModel((response.data.model_aliases || {}).best_model || null);
       setDefaultModelWeights(weights);
       setModelWeights({...weights});
       if (typeof response.data.decision_threshold === 'number') {
@@ -114,12 +121,16 @@ export default function ClassificationGrid() {
   const runPrediction = (smiles) => {
     if (!smiles || smiles.length === 0) return;
     const settings = {
-      models: selectedModel === 'Ensemble' ? 'Ensemble (all models)' : `single model: ${selectedModel}`,
+      models: selectedModel === 'Ensemble'
+        ? `Ensemble (${runningModels().length === availableModels.length
+            ? 'all models' : runningModels().join(', ')})`
+        : `single model: ${selectedModel}`,
       weights: {...modelWeights},
       resolve: resolveInconsistencies,
     };
     setHasPredicted(true);
     setPredictionsLoading(true);
+    setPredictionError(null);
     setExpandedRowId(null);
     setDetailsByRow({});
     setSelectedClassByRow({});
@@ -148,6 +159,11 @@ export default function ClassificationGrid() {
         threshold: response.data.decision_threshold,
         settings: {...settings, threshold: response.data.decision_threshold},
       })));
+    }).catch(error => {
+      setRows([]);
+      setPredictionError(
+        error.response?.data?.message || error.message || 'The prediction request failed.'
+      );
     }).finally(() => setPredictionsLoading(false));
   };
 
@@ -190,7 +206,7 @@ export default function ClassificationGrid() {
         '',
         `Selected class: ${explanation.name} (CHEBI:${selected})`,
         `Ensemble score: ${explanation.score?.toFixed(3)} (predicted above ${settings.threshold ?? decisionThreshold})`,
-        explanation.near_miss ? 'This class was NOT predicted' : '',
+        explanation.near_miss ? 'NOT predicted' : '',
         'Model contributions:',
         ...Object.entries(explanation.models || {}).map(([model, values]) =>
           `  ${model}: prediction ${values.prediction?.toFixed(3)}, ` +
@@ -475,9 +491,31 @@ export default function ClassificationGrid() {
                           value={selectedModel}
                           onChange={(e) => setSelectedModel(e.target.value)}
                           disabled={!modelsLoaded}
+                          // the recommended entries carry a second line, which would be too much
+                          // for the closed field - it only ever shows the name
+                          renderValue={(value) => value}
                         >
-                          <MenuItem value={'Ensemble'}>Ensemble</MenuItem>
-                          {availableModels.map((m, idx) => (
+                          <ListSubheader sx={{lineHeight: '32px'}}>Recommended</ListSubheader>
+                          <MenuItem value={'Ensemble'}>
+                            <Box>
+                              <Typography variant="body2">Ensemble</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Combines all models (best results)
+                              </Typography>
+                            </Box>
+                          </MenuItem>
+                          {bestModel && (
+                            <MenuItem value={bestModel}>
+                              <Box>
+                                <Typography variant="body2">{bestModel}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  The best single model (faster results)
+                                </Typography>
+                              </Box>
+                            </MenuItem>
+                          )}
+                          <ListSubheader sx={{lineHeight: '32px'}}>Single models</ListSubheader>
+                          {availableModels.filter(m => m !== bestModel).map((m) => (
                             <MenuItem key={m} value={m}>{m}</MenuItem>
                           ))}
                         </Select>
@@ -557,6 +595,9 @@ export default function ClassificationGrid() {
 
               {hasPredicted && (
                 <Box sx={{mt: 2, width: '90%', mx: 'auto'}}>
+                  {predictionError && (
+                    <Alert severity="error" sx={{mb: 2, textAlign: 'left'}}>{predictionError}</Alert>
+                  )}
                   {rows.length > 0 && (
                     <Box sx={{
                       display: 'grid',

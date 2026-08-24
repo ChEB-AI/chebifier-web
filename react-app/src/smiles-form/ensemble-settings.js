@@ -16,7 +16,8 @@ import Typography from '@mui/material/Typography';
 /**
  * Popover for tuning how much say each base learner has in the ensemble vote. The weight scales a
  * model's votes for every class, on top of the confidence and the class-wise reliability the
- * ensemble weights them by. A weight of 0 silences a model without removing it.
+ * ensemble weights them by. A weight of 0 takes the model out of the run entirely: it is not
+ * asked for a prediction and does not appear in the explanation, rather than voting with no say.
  */
 export default function EnsembleSettings({
                                            models,
@@ -61,8 +62,8 @@ export default function EnsembleSettings({
     <>
       <Typography variant="subtitle2" sx={{mb: 0.5}}>Precision vs. recall</Typography>
       <Typography variant="caption" color="text.secondary" component="p" sx={{mb: 1.5}}>
-        Experimental. The percentages are what the ensemble reached on the ChEBI test set - on
-        molecules unlike those, and on rare classes, it will be less reliable than they suggest.
+        Experimental. Precision / recall have been measured on the ChEBI test set with ensemble default settings. On 
+        molecules unlike those, and on rare classes, Chebifier will be less reliable.
       </Typography>
       <Box sx={{display: 'grid', gridTemplateColumns: 'minmax(70px, auto) 1fr 56px', columnGap: 1.5, rowGap: 0.5, alignItems: 'center'}}>
         <Typography variant="body2">Precision</Typography>
@@ -103,7 +104,7 @@ export default function EnsembleSettings({
 
   return (
     <>
-      <Tooltip title="Ensemble settings: precision/recall and model weights">
+      <Tooltip title="Ensemble settings">
         <span>
           <IconButton
             size="small"
@@ -125,6 +126,51 @@ export default function EnsembleSettings({
         anchorOrigin={{vertical: 'bottom', horizontal: 'left'}}
         slotProps={{paper: {sx: {p: 2, width: 440, maxWidth: '90vw'}}}}
       >
+        
+        {operatingPointSection}
+        <Typography variant="subtitle2" sx={{mb: 0.5}}>Model weights</Typography>
+        <Typography variant="caption" color="text.secondary" component="p" sx={{mb: 1.5}}>
+          General weight of each model has in the vote. This will be combined with class-wise weights based on the model's 
+          performance.
+        </Typography>
+        <Box sx={{display: 'grid', gridTemplateColumns: 'minmax(120px, auto) 1fr 40px', columnGap: 1.5, rowGap: 0.5, alignItems: 'center'}}>
+          {models.map((model) => {
+            const excluded = weightOf(model) === 0;
+            return (
+              <React.Fragment key={`weight-${model}`}>
+                <Typography
+                  variant="body2"
+                  noWrap
+                  title={excluded ? `${model} (excluded)` : model}
+                  sx={excluded ? {color: 'text.disabled', textDecoration: 'line-through'} : undefined}
+                >
+                  {model}
+                </Typography>
+                <Slider
+                  size="small"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={weightOf(model)}
+                  onChange={(e, value) => onChange(model, value)}
+                  valueLabelDisplay="auto"
+                  aria-label={`Model weight for ${model}`}
+                />
+                <Typography
+                  variant="caption"
+                  sx={{
+                    textAlign: 'right',
+                    fontVariantNumeric: 'tabular-nums',
+                    color: excluded ? 'text.disabled' : undefined,
+                  }}
+                >
+                  {excluded ? 'off' : weightOf(model)}
+                </Typography>
+              </React.Fragment>
+            );
+          })}
+        </Box>
+        <Divider sx={{mb: 2}}/>
         <FormControlLabel
           control={
             <Switch
@@ -134,35 +180,12 @@ export default function EnsembleSettings({
             />
           }
           label={
-            <Tooltip title="Correct predictions that contradict the ChEBI hierarchy or its disjointness axioms">
+            <Tooltip title="Automatically fix predictions that contradict the ChEBI hierarchy or its disjointness axioms">
               <Typography variant="body2">Resolve inconsistencies</Typography>
             </Tooltip>
           }
           sx={{ml: 0, mb: 1.5}}
         />
-        <Divider sx={{mb: 2}}/>
-        {operatingPointSection}
-        <Typography variant="subtitle2" sx={{mb: 1.5}}>Model weights</Typography>
-        <Box sx={{display: 'grid', gridTemplateColumns: 'minmax(120px, auto) 1fr 32px', columnGap: 1.5, rowGap: 0.5, alignItems: 'center'}}>
-          {models.map((model) => (
-            <React.Fragment key={`weight-${model}`}>
-              <Typography variant="body2" noWrap title={model}>{model}</Typography>
-              <Slider
-                size="small"
-                min={0}
-                max={100}
-                step={1}
-                value={weightOf(model)}
-                onChange={(e, value) => onChange(model, value)}
-                valueLabelDisplay="auto"
-                aria-label={`Model weight for ${model}`}
-              />
-              <Typography variant="caption" sx={{textAlign: 'right', fontVariantNumeric: 'tabular-nums'}}>
-                {weightOf(model)}
-              </Typography>
-            </React.Fragment>
-          ))}
-        </Box>
         <Box sx={{mt: 1.5, display: 'flex', gap: 1}}>
           <Button size="small" startIcon={<RestartAltIcon/>} onClick={onReset} disabled={!settingsChanged}>
             Reset

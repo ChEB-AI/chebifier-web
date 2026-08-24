@@ -1,12 +1,12 @@
 {
   "TESTING": true,
-  "CHEBI_VERSION": 252,
-  "CHEBI_GRAPH": "path/to/chebi_graph_v252.pkl (optional, downloaded from Hugging Face if missing)",
+  "CHEBI_GRAPH":"path/to/chebi_graph_v252.pkl (optional, downloaded from Hugging Face if missing)",
   "ENSEMBLE_DIR": "directory holding the ensemble calibration (prediction_thresholds.yaml, <model>_classwise_f1.txt, best_hyperparameters.csv)",
   "ENSEMBLE_CLASSES": "file listing the classes the ensemble was calibrated on, one per line",
-  "STATS_DB": "file the count of classified molecules is kept in (optional)",
+  "STATS_DB": null,
   "PR_CURVE": "precision/recall curve of the ensemble over the decision threshold (optional; enables the precision/recall sliders)",
   "INCONSISTENCY_RESOLUTION": "score-based",
+  "BEST_MODEL": null,
   "MODELS": {
     "My model": {
       "type": "chebifier model type (e.g. gat, chemlog, lopster_clingo, c3p, chebi_lookup)",

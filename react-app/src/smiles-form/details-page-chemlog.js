@@ -1,29 +1,11 @@
 import React from 'react';
-import axios from 'axios'
 
-import {useEffect, useRef} from "react";
-import {Network} from "vis-network";
-
-import Accordion from '@mui/material/Accordion';
-import AccordionSummary from '@mui/material/AccordionSummary';
-import AccordionDetails from '@mui/material/AccordionDetails';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import CancelIcon from '@mui/icons-material/Close';
-import Divider from '@mui/material/Divider';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import FormControl from '@mui/material/FormControl';
-import Grid from '@mui/material/Grid';
-import Paper from '@mui/material/Paper';
-import Skeleton from '@mui/material/Skeleton';
-import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
 import TabContext from '@mui/lab/TabContext';
 import TabList from '@mui/lab/TabList';
 import TabPanel from '@mui/lab/TabPanel';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import {styled} from '@mui/material/styles';
 
 import Alert from "@mui/material/Alert";
 import { loadRDKit } from '../lib/rdkit-loader';
@@ -32,26 +14,6 @@ import { loadRDKit } from '../lib/rdkit-loader';
 const GLOBAL_MOL_PARAMS = {
 	width: 300,
 	height: 300,
-}
-const NetworkElement = (data) => {
-    const visJsRef = useRef(null);
-    useEffect(() => {
-        if(data.graph != null){
-            const g = {
-                nodes: data.graph.nodes,
-                edges: data.graph.edges
-            }
-            const network = visJsRef.current && new Network(
-                visJsRef.current, g, {
-                physics: false,
-                width: "100%",
-                height: "100%",
-                clickToUse: true
-            });
-            network.fit()
-        }
-    }, [visJsRef, data]);
-    return <Box><div ref={visJsRef}/></Box>
 }
 
 const LayerComponent = (data) => {
@@ -104,11 +66,6 @@ export function LayerTabs(data) {
 
 
 export function HighlightsBlocks(data) {
-	const [value, setValue] = React.useState(0);
-    const handleChange = (event, newValue) => {
-        setValue(newValue);
-    };
-
     var blocks = data.highlights;
     var blocks_content = [];
     for (let i = 0; i < blocks.length; i++) {
@@ -157,7 +114,6 @@ export function HighlightsBlocks(data) {
 
 
 export function DetailsBlockwise(data) {
-    const handleClose = data.handleClose;
     data = data.model_data;
     const smiles = data.smiles;
     // RDKit is fetched once for the whole app, so it may not be there on the first render

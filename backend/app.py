@@ -4,6 +4,7 @@ from flask_cors import CORS  # comment this on deployment
 import torch.multiprocessing as mp
 
 import json
+import os
 
 app = Flask(__name__, static_url_path='', static_folder='../react-app/build')
 CORS(app) # comment this on deployment
@@ -27,7 +28,7 @@ def serve_client_route(error):
     the router and 404s. Static files are served before this runs, so only paths that exist as
     client-side routes reach it - and API paths keep their 404.
     """
-    if request.path.startswith("/api/"):
+    if request.path.startswith("/api/") or os.path.splitext(request.path)[1]:
         return {"message": "Not found"}, 404
     return send_from_directory(app.static_folder, 'index.html')
 

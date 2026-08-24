@@ -6,7 +6,7 @@ import os
 import matplotlib as mpl
 import torch
 from app import app
-from flask_restful import Resource, reqparse
+from flask_restful import Resource, abort, reqparse
 
 from api.ensemble import DEFAULT_MODEL_WEIGHT, WeightedWMVF1Ensemble
 from chebifier.inconsistency_resolution import ScoreBasedPredictionSmoother
@@ -17,10 +17,9 @@ from chebifier.predict import (
     get_base_learner_predictions,
 )
 from chebi_utils.read_molecule import smiles_or_inchi_to_mol
-from chebifier.utils import _smiles_to_mol, get_disjoint_files
+from chebifier.utils import get_disjoint_files, to_smiles
 import stats
 from ontology import CHEBI_GRAPH, class_name, most_specific, to_vis_graph
-from rdkit import Chem
 
 mpl.use("Agg")
 
@@ -63,7 +62,29 @@ class CachedSmoother(ScoreBasedPredictionSmoother):
         super().set_label_names(label_names)
 
 
+def build_model_aliases():
+    """Stable names a client can use in place of a concrete model name.
+
+    A client that wants "the best single model" should not have to name it - the models get
+    retrained, renamed and retired, and every hardcoded reference to one breaks when they do.
+    `best_model` resolves to whatever `BEST_MODEL` currently points at instead.
+    """
+    aliases = {}
+    best_model = app.config.get("BEST_MODEL")
+    if not best_model:
+        print("No BEST_MODEL configured, the 'best_model' alias is unavailable.")
+    elif best_model not in MODELS:
+        raise ValueError(
+            f"BEST_MODEL is {best_model!r}, which is not one of the configured models: "
+            f"{', '.join(MODELS)}."
+        )
+    else:
+        aliases["best_model"] = best_model
+    return aliases
+
+
 MODELS = build_models()
+MODEL_ALIASES = build_model_aliases()
 DEFAULT_MODEL_WEIGHTS = {
     model_name: config.get("model_weight", DEFAULT_MODEL_WEIGHT)
     for model_name, config in MODEL_CONFIG.items()
@@ -142,23 +163,46 @@ print(
 )
 
 
+def resolve_requested_models(names):
+    """The configured model each requested name refers to, resolving aliases.
+
+    A name no model answers to aborts the request. Silently dropping it would leave a client that
+    asks for a model which has since been renamed or retired with a successful response that
+    contains nothing - the failure has to be visible to be fixable.
+    """
+    resolved = {name: MODEL_ALIASES.get(name, name) for name in names}
+    unknown = [name for name, model in resolved.items() if model not in MODELS]
+    if unknown:
+        abort(
+            400,
+            message=(
+                f"Unknown model(s): {', '.join(repr(name) for name in unknown)}. "
+                f"Available models: {', '.join(repr(name) for name in MODELS)}. "
+                f"Aliases: {', '.join(repr(name) for name in MODEL_ALIASES) or 'none'}."
+            ),
+        )
+    return resolved
+
+
 def selected_model_names(selected_models):
     """The models to run, in configuration order. Without a selection, the whole ensemble runs."""
     if not selected_models:
         return list(MODELS)
-    return [name for name in MODELS if selected_models.get(name)]
+    resolved = resolve_requested_models(selected_models)
+    chosen = {resolved[name] for name, selected in selected_models.items() if selected}
+    return [name for name in MODELS if name in chosen]
 
 
 def requested_weights(model_weights):
     if not model_weights:
         return None
+    resolved = resolve_requested_models(model_weights)
     weights = {}
     for model_name, weight in model_weights.items():
-        if model_name in MODELS:
-            try:
-                weights[model_name] = max(0.0, float(weight))
-            except (TypeError, ValueError):
-                continue
+        try:
+            weights[resolved[model_name]] = max(0.0, float(weight))
+        except (TypeError, ValueError):
+            continue
     return weights
 
 
@@ -166,34 +210,6 @@ def jsonable(value):
     """JSON has no NaN, and a base learner that did not cover a class reports exactly that."""
     value = float(value)
     return None if math.isnan(value) else value
-
-
-def to_smiles(molecule):
-    """The SMILES string the models are run on, or None if RDKit cannot read the input.
-
-    Inputs may be SMILES or InChI. A SMILES string is passed on as it was written - canonicalising
-    it would hand the models a different molecule representation than the user asked about - while
-    an InChI has to be translated, since the base learners only take SMILES.
-    """
-    if not molecule:
-        return None
-    if molecule.startswith("InChI="):
-        mol = smiles_or_inchi_to_mol(molecule)
-        return None if mol is None else Chem.MolToSmiles(mol)
-    return molecule if _smiles_to_mol(molecule) is not None else None
-
-
-def readable_rows(molecules):
-    """The inputs RDKit can read, as (index, SMILES) pairs.
-
-    Not every base learner reports an unreadable molecule as "no prediction" - C3P, for one,
-    answers "no" for each of its classes - so the ensemble would report an empty classification
-    rather than a failure. Sorting them out here also keeps them out of the models entirely.
-    """
-    resolved = [to_smiles(molecule) for molecule in molecules]
-    return resolved, [
-        index for index, smiles in enumerate(resolved) if smiles is not None
-    ]
 
 
 def near_miss_classes(aggregated, row, threshold):
@@ -217,10 +233,26 @@ def near_miss_classes(aggregated, row, threshold):
     return [ENSEMBLE_CLASSES[class_idx] for class_idx in ranked.tolist()]
 
 
-def run_ensemble(smiles_list, selected_models, model_weights, threshold, resolve=True):
+def running_model_names(selected_models, model_weights):
+    """The models a request actually runs: its selection, minus anything weighted 0.
+
+    A weight of 0 leaves a model without any say in the vote, so running it would only cost time
+    and put a model that had no part in the decision into the explanation. Taking it out here
+    rather than letting it vote with weight 0 makes "weight 0" mean the same thing to the ensemble
+    and to what the response reports.
+    """
+    weights = {**DEFAULT_MODEL_WEIGHTS, **(model_weights or {})}
+    return [
+        name
+        for name in selected_model_names(selected_models)
+        if weights.get(name, DEFAULT_MODEL_WEIGHT) > 0
+    ]
+
+
+def run_ensemble(model_names, smiles_list, model_weights, threshold, resolve=True):
     """Base learner predictions, ensemble aggregation and inconsistency resolution for a batch of
     SMILES strings. Returns the per-model predictions alongside the aggregated result."""
-    models = {name: MODELS[name] for name in selected_model_names(selected_models)}
+    models = {name: MODELS[name] for name in model_names}
     if not models:
         raise ValueError("No models selected.")
     predictions = get_base_learner_predictions(models, smiles_list)
@@ -260,6 +292,9 @@ class ModelInfoAPI(Resource):
             "available_models_info_texts": [
                 model.info_text for model in MODELS.values()
             ],
+            # alias -> the model it currently stands for, so a client can name one without
+            # pinning itself to whichever model happens to fill that role today
+            "model_aliases": MODEL_ALIASES,
             "default_model_weights": DEFAULT_MODEL_WEIGHTS,
             "decision_threshold": DECISION_THRESHOLD,
             "operating_points": OPERATING_POINTS,
@@ -280,8 +315,9 @@ class BatchPrediction(Resource):
         {
             "smiles": [ ... list of SMILES or InChI strings],
             "ontology": bool (Optional),
-            "selectedModels": {model name: bool} (Optional),
-            "modelWeights": {model name: number} (Optional, overrides the configured weights),
+            "selectedModels": {model name: bool} (Optional, the whole ensemble runs without it),
+            "modelWeights": {model name: number} (Optional, overrides the configured weights; a
+                model weighted 0 is left out of the run entirely),
             "decisionThreshold": number (Optional, overrides the ensemble's operating point),
             "resolveInconsistencies": bool (Optional, default true - resolve predictions that
                 contradict the ChEBI hierarchy or its disjointness axioms)
@@ -300,6 +336,11 @@ class BatchPrediction(Resource):
         }
 
         If the system is unable to parse an input, the respective entry in each list will be `None`.
+
+        A model name in `selectedModels` or `modelWeights` that no model answers to is a 400 -
+        `/api/modelinfo` lists the names that exist. Besides those, the aliases it reports under
+        `model_aliases` can be used, which is what a client should name if it wants a role
+        ("the best single model") rather than one particular model.
         """
         parser = reqparse.RequestParser()
         parser.add_argument("smiles", type=str, action="append")
@@ -314,6 +355,17 @@ class BatchPrediction(Resource):
         smiles = args["smiles"]
         generate_ontology = args["ontology"]
         threshold = requested_threshold(args["decisionThreshold"])
+        # up front, so an unknown model name is reported whatever the rest of the request looks like
+        weights = requested_weights(args["modelWeights"])
+        selected = running_model_names(args["selectedModels"], weights)
+        if not selected:
+            abort(
+                400,
+                message=(
+                    "No models to run: every model is either deselected or weighted 0. "
+                    "Select at least one model and give it a weight above 0."
+                ),
+            )
 
         if not smiles or len(smiles) == 0:
             result = {
@@ -327,39 +379,32 @@ class BatchPrediction(Resource):
                 result["ontology"] = []
             return result
 
-        resolved_smiles, rows = readable_rows(smiles)
-        # without a single model there is nothing to predict with, so every input "fails"
-        if not selected_model_names(args["selectedModels"]):
-            rows = []
-        if rows:
-            predictions, aggregated = run_ensemble(
-                [resolved_smiles[index] for index in rows],
-                args["selectedModels"],
-                requested_weights(args["modelWeights"]),
-                threshold,
-                args["resolveInconsistencies"],
-            )
-            model_names = list(predictions)
-            attribution = aggregated["attribution"]
-            positive = aggregated["positive_mask"]
-            negative = aggregated["negative_mask"]
-        row_of = {smiles_idx: row for row, smiles_idx in enumerate(rows)}
+        predictions, aggregated = run_ensemble(
+            selected,
+            smiles,
+            weights,
+            threshold,
+            args["resolveInconsistencies"],
+        )
+        model_names = list(predictions)
+        attribution = aggregated["attribution"]
+        positive = aggregated["positive_mask"]
+        negative = aggregated["negative_mask"]
 
         predicted_parents, direct_parents, ontologies, explanations = [], [], [], []
         for smiles_idx in range(len(smiles)):
-            row = row_of.get(smiles_idx)
-            if row is None or aggregated["complete_failure"][row]:
+            if aggregated["complete_failure"][smiles_idx]:
                 predicted_parents.append(None)
                 direct_parents.append(None)
                 ontologies.append(None)
                 explanations.append(None)
                 continue
-            decisions = aggregated["class_decisions"][row]
+            decisions = aggregated["class_decisions"][smiles_idx]
             predicted = [
                 ENSEMBLE_CLASSES[class_idx]
                 for class_idx in torch.nonzero(decisions).flatten().tolist()
             ]
-            near_misses = near_miss_classes(aggregated, row, threshold)
+            near_misses = near_miss_classes(aggregated, smiles_idx, threshold)
             predicted_parents.append(predicted)
             ontologies.append(
                 to_vis_graph(predicted, near_misses) if generate_ontology else None
@@ -375,22 +420,22 @@ class BatchPrediction(Resource):
                     # which way the model voted: its prediction against its own threshold. Models
                     # that did not cover the class cast no vote and hold no share of the decision,
                     # so they are left out entirely.
-                    vote = int(positive[row, class_idx, model_idx]) - int(
-                        negative[row, class_idx, model_idx]
+                    vote = int(positive[smiles_idx, class_idx, model_idx]) - int(
+                        negative[smiles_idx, class_idx, model_idx]
                     )
                     if vote:
                         models[model_name] = {
                             "prediction": jsonable(
-                                predictions[model_name][row, class_idx]
+                                predictions[model_name][smiles_idx, class_idx]
                             ),
                             "attribution": jsonable(
-                                attribution[row, class_idx, model_idx]
+                                attribution[smiles_idx, class_idx, model_idx]
                             ),
                             "vote": vote,
                         }
                 explanations_for_smiles[cls] = {
                     "name": class_name(cls),
-                    "score": jsonable(aggregated["net_score"][row, class_idx]),
+                    "score": jsonable(aggregated["net_score"][smiles_idx, class_idx]),
                     "models": models,
                     "near_miss": cls in near_misses,
                 }
@@ -399,18 +444,15 @@ class BatchPrediction(Resource):
         # an input that could not be read never reached the models, so it is not a prediction
         stats.record(sum(1 for parents in predicted_parents if parents is not None))
 
+        mols = [smiles_or_inchi_to_mol(s) for s in smiles]
+        smiles_resmiled = [to_smiles(mol) if mol is not None else None for mol in mols]
         result = {
             # the operating point the decisions were taken at, which the request may have moved
             "decision_threshold": threshold,
             "predicted_parents": predicted_parents,
             "direct_parents": direct_parents,
             "explanations": explanations,
-            # what the input was read as - an InChI is translated to SMILES for the models, and
-            # the frontend needs the same string to draw the molecule and ask for details
-            "smiles": [
-                resolved_smiles[index] if row_of.get(index) is not None else None
-                for index in range(len(smiles))
-            ],
+            "smiles": smiles_resmiled,
         }
         if generate_ontology:
             result["ontology"] = ontologies
@@ -427,8 +469,7 @@ class PredictionDetailApiHandler(Resource):
         parser.add_argument("selectedModels", type=dict, required=False, default=None)
 
         args = parser.parse_args()
-        smiles = to_smiles(args["smiles"])
-
+        smiles = args["smiles"]
         explain_infos = {"models": dict()}
         if smiles is None:
             return explain_infos
