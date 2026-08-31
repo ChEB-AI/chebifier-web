@@ -34,12 +34,11 @@ def serve_client_route(error):
 
 
 def load_endpoints():
-    from api.chemclass import PredictionDetailApiHandler, BatchPrediction, ModelInfoAPI, StatsAPI
+    from api.chemclass import PredictionDetailApiHandler, BatchPrediction, ModelInfoAPI
     api.add_resource(PredictionDetailApiHandler, '/api/details')
     api.add_resource(BatchPrediction, '/api/classify')
     api.add_resource(ModelInfoAPI, '/api/modelinfo')
-    api.add_resource(StatsAPI, '/api/stats')
-
+c
 with app.app_context():
     mp.set_start_method("spawn")
     load_endpoints()

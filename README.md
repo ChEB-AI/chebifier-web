@@ -12,6 +12,30 @@ Chebifier is a tool for automated classification of chemicals in the [ChEBI](htt
 
 ## Installation
 
+### Setup Frontend
+
+Change to the respective directory and build the node.js files
+```
+cd react-app
+npm run build
+```
+
+### Run in development
+
+You can now start the development server with
+
+```
+cd backend
+flask run
+```
+
+The server should now run at [localhost:5000](localhost:5000), serving both the API and the built
+frontend. Start it from the `backend` directory - the configuration and `data/disjoint_*.csv` are
+looked up relative to the working directory. The first startup may take a bit longer: the ChEBI graph, the model
+checkpoints and the ChEBI lookup table are all loaded up front.
+
+The backend has to run in an environment that has `chebifier` installed.
+
 ### Setup Backend
 
 Some dependencies require that pytorch is already installed:
@@ -40,56 +64,13 @@ Besides the models, the configuration points at the calibration of the ensemble:
  * `ENSEMBLE_CLASSES`: the class list the ensemble was calibrated on, one ChEBI id per line. The class-wise F1 scores are stored positionally, so this list has to match the calibration exactly.
  * `CHEBI_GRAPH`: the ChEBI graph pickle the calibration was built against. If the file is missing, it is downloaded from [Hugging Face](https://huggingface.co/datasets/chebai/chebifier).
  * `INCONSISTENCY_RESOLUTION`: `score-based` (the default) or `none`.
- * `BEST_MODEL` (optional): the `MODELS` key that the `best_model` alias resolves to. API clients
-   that want the strongest single model can select `best_model` instead of naming it, so the model
-   can be swapped out without breaking them. A name that is not in `MODELS` is a startup error;
+ * `BEST_MODEL` (optional): the `MODELS` key that the `best_model` alias resolves to. A name that is not in `MODELS` is a startup error;
    without the setting the alias simply does not exist.
- * `STATS_DB` (optional): SQLite file the number of classified molecules is counted in, shown in the
-   app as "x molecules classified since ...". Only a per-day count is stored, never the molecules.
-   Under uWSGI the request is answered by one of several worker processes, so the count cannot live
-   in memory - the increment is a single upserting statement in a transaction, which concurrent
-   workers cannot lose the way a read-modify-write on a plain file would. Put the file on local
-   disk (SQLite locking is unreliable over NFS) and on a path that survives a deploy. Delete the
-   file to reset the counter.
  * `PR_CURVE` (optional): a CSV of measured operating points (`threshold`, `full_micro_precision`,
    `full_micro_recall`), as written by the evaluation grid. It backs the precision/recall sliders in
    the ensemble settings: the user asks for more precision or more recall, and the app picks the
    threshold that delivered it on the test set. Without the file the operating point stays fixed at
    the one the ensemble reports.
-
-### How a prediction is explained
-
-Molecules can be entered as SMILES or InChI strings, mixed freely. An InChI is translated to SMILES
-before it reaches the base learners, and the response carries the SMILES each input was read as.
-
-For each predicted class, the web app reports the ensemble score - a probability in [0, 1], with the class predicted above the ensemble's decision threshold - together with the share of that decision each base learner is responsible for (the shares sum to 1) and the raw 0-1 prediction each model made for the class.
-
-### Setup Frontend
-
-Change to the respective directory and build the node.js files
-```
-cd react-app
-npm run build
-```
-
-### Run in development
-
-You can now start the development server with
-
-```
-cd backend
-flask run
-```
-
-The server should now run at [localhost:5000](localhost:5000), serving both the API and the built
-frontend. Start it from the `backend` directory - the configuration and `data/disjoint_*.csv` are
-looked up relative to the working directory. Startup takes a while: the ChEBI graph, the model
-checkpoints and the SMILES lookup table are all loaded up front.
-
-The backend has to run in an environment that has `chebifier` and all of its base learners
-installed (`chebai`, `chebai-graph`, `chemlog`, `chemlog-extra`, `c3p`). If that environment is a
-virtualenv of the python-chebifier checkout, run flask from it directly, e.g.
-`../../python-chebifier/.venv/Scripts/python -m flask --app app run`.
 
 ## Citation
 

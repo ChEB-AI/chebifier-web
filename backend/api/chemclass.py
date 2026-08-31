@@ -18,7 +18,6 @@ from chebifier.predict import (
 )
 from chebi_utils.read_molecule import smiles_or_inchi_to_mol
 from chebifier.utils import get_disjoint_files, to_smiles
-import stats
 from ontology import CHEBI_GRAPH, class_name, most_specific, to_vis_graph
 
 mpl.use("Agg")
@@ -302,12 +301,6 @@ class ModelInfoAPI(Resource):
         }
 
 
-class StatsAPI(Resource):
-
-    def get(self):
-        return stats.summary()
-
-
 class BatchPrediction(Resource):
     def post(self):
         """
@@ -440,9 +433,6 @@ class BatchPrediction(Resource):
                     "near_miss": cls in near_misses,
                 }
             explanations.append(explanations_for_smiles)
-
-        # an input that could not be read never reached the models, so it is not a prediction
-        stats.record(sum(1 for parents in predicted_parents if parents is not None))
 
         mols = [smiles_or_inchi_to_mol(s) for s in smiles]
         smiles_resmiled = [to_smiles(mol) if mol is not None else None for mol in mols]

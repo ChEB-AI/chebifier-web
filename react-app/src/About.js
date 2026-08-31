@@ -36,19 +36,10 @@ const Section = ({title, children}) => (
     </Paper>
 );
 
-/** "2026-08-18" as "18 August 2026", without dragging in a date library. */
-const formatDate = (day) => {
-    const date = new Date(`${day}T00:00:00Z`);
-    return Number.isNaN(date.getTime())
-        ? day
-        : date.toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'});
-};
-
 const About = () => {
     const [availableModels, setAvailableModels] = React.useState([]);
     const [availableModelsInfoTexts, setAvailableModelsInfoTexts] = React.useState([]);
     const [numClasses, setNumClasses] = React.useState(null);
-    const [stats, setStats] = React.useState(null);
 
     // Load once on mount so About content is fetched when the site loads
     React.useEffect(() => {
@@ -59,7 +50,6 @@ const About = () => {
         }).catch(() => {
             // silently ignore, page content still renders
         });
-        axios.get('/api/stats').then(response => setStats(response.data)).catch(() => {});
     }, []);
 
     return (
@@ -138,7 +128,7 @@ const About = () => {
 
                         <Section title="News">
                             {[
-                                ['08/2026', 'Re-calibrated ensemble. Added new, better deep learning models trained on ChEBI ' +
+                                ['09/2026', 'Re-calibrated ensemble. Added new, better deep learning models trained on ChEBI ' +
                                 'version 252. This increased the coverage by ~500 classes. Improved user interface, added InChI support and model attributions. Model weights can now be set manually' +
                                 ''],
                                 ['02/2026', 'Added Lopster and new deep learning models.'],
@@ -164,14 +154,8 @@ const About = () => {
                         </Section>
 
                         <Section title="Your data">
-                            {stats?.molecules > 0 && (
-                                <Typography variant="body1" paragraph>
-                                    Chebifier has classified {stats.molecules.toLocaleString('en-US')} molecules
-                                    {stats.since ? ` since ${formatDate(stats.since)}` : ''}. 
-                                </Typography>
-                            )}
                             <Typography variant="body1" sx={{mb: 0}}>
-                                Appart from the overall count, Chebifier does not store any personal information about you.
+                                Chebifier does not store any information about you or your data.
                             </Typography>
                         </Section>
                     </Box>
