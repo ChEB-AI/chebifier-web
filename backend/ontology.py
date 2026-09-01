@@ -4,20 +4,14 @@ This module used to be called `chebi_utils`, which now shadows the installed `ch
 package that chebifier itself imports - hence the rename.
 """
 
-import os
-
-from app import app
 from chebi_utils.obo_extractor import get_hierarchy_subgraph
 from chebifier.utils import load_chebi_graph
 
-_local_graph = app.config.get("CHEBI_GRAPH")
-if _local_graph and not os.path.exists(_local_graph):
-    print(f"ChEBI graph {_local_graph} not found, downloading it from Hugging Face...")
-    _local_graph = None
-
 # the full graph carries non-subsumption relations (has role, conjugate acid/base, ...) and is
-# what the predictors expect; the hierarchy is the is-a subgraph of it
-CHEBI_GRAPH = load_chebi_graph(_local_graph)
+# what the predictors expect; the hierarchy is the is-a subgraph of it. Load it through the bare,
+# cached load_chebi_graph() so the whole app and the library's inconsistency smoother share one
+# graph object rather than each loading its own copy.
+CHEBI_GRAPH = load_chebi_graph()
 CHEBI_HIERARCHY = get_hierarchy_subgraph(CHEBI_GRAPH)
 
 # ChEBI's "molecular entity", the class every other class here descends from. The graph starts

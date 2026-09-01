@@ -14,33 +14,15 @@ from chebifier.cli import (
     read_classes,
     read_model_weights,
 )
-from chebifier.inconsistency_resolution import ScoreBasedPredictionSmoother
-from chebifier.predict import (
-    apply_inconsistency_resolution,
-    collect_base_learner_predictions,
-    get_base_learner_predictions,
-)
-from chebifier.utils import download_ensemble_calibration, get_disjoint_files, to_smiles
+from chebifier.predict import predict
+from chebifier.utils import download_ensemble_calibration, to_smiles
 from chebi_utils.read_molecule import smiles_or_inchi_to_mol
-from ontology import CHEBI_GRAPH, class_name, most_specific, to_vis_graph
+from ontology import class_name, most_specific, to_vis_graph
 
 mpl.use("Agg")
 
 # A model without an explicit model_weight in the ensemble config votes with weight 1.
 DEFAULT_MODEL_WEIGHT = 1
-
-
-class CachedSmoother(ScoreBasedPredictionSmoother):
-    """Inconsistency resolution for a fixed class list.
-
-    Setting the label names walks the ChEBI hierarchy once per class to build the transitive
-    subsumption matrix, which takes far too long to redo on every request.
-    """
-
-    def set_label_names(self, label_names):
-        if label_names is not None and label_names == getattr(self, "label_names", None):
-            return
-        super().set_label_names(label_names)
 
 
 ENSEMBLE_CONFIG = app.config["ENSEMBLE_CONFIG"]
@@ -127,16 +109,7 @@ def build_model_aliases():
 
 
 MODEL_ALIASES = build_model_aliases()
-SMOOTHER = (
-    CachedSmoother(
-        chebi_graph=CHEBI_GRAPH,
-        label_names=ENSEMBLE_CLASSES,
-        disjoint_files=get_disjoint_files(),
-        threshold=DECISION_THRESHOLD,
-    )
-    if app.config["INCONSISTENCY_RESOLUTION"] == "score-based"
-    else None
-)
+INCONSISTENCY_RESOLUTION = app.config.get("INCONSISTENCY_RESOLUTION") or "none"
 
 
 def read_operating_points():
@@ -278,33 +251,25 @@ def run_ensemble(model_names, smiles_list, model_weights, threshold, resolve=Tru
     models = {name: MODELS[name] for name in model_names}
     if not models:
         raise ValueError("No models selected.")
-    predictions = get_base_learner_predictions(models, smiles_list)
-    predictions, _ = collect_base_learner_predictions(
-        predictions, classes=ENSEMBLE_CLASSES
+    aggregated = predict(
+        models,
+        # a per-request view of the ensemble, so overlapping requests can vote with different
+        # weights without mutating the shared instance
+        reweighted(ENSEMBLE, model_weights),
+        smiles_list,
+        resolve_inconsistencies=resolve,
+        inconsistency_resolution=INCONSISTENCY_RESOLUTION,
+        # the smoother compares scores against the operating point, so it has to move with the
+        # threshold. Keying it here gives each threshold its own cached smoother rather than one
+        # shared instance whose threshold overlapping requests would fight over.
+        inconsistency_resolution_params={"threshold": threshold},
+        decision_threshold=threshold,
+        classes=ENSEMBLE_CLASSES,
+        # also returns the per-model predictions (as `base_learner_predictions`), which the response
+        # needs to explain each class
+        attribution=True,
     )
-    aggregated = reweighted(ENSEMBLE, model_weights).predict(
-        predictions, attribution=True
-    )
-    if SMOOTHER is not None and resolve:
-        smoother = SMOOTHER
-        if threshold != SMOOTHER.threshold:
-            # the smoother compares scores against the operating point, so it has to move with it -
-            # on a copy, since requests can overlap
-            smoother = copy.copy(SMOOTHER)
-            smoother.threshold = threshold
-        aggregated = apply_inconsistency_resolution(
-            smoother,
-            ENSEMBLE_CLASSES,
-            aggregated,
-            decision_threshold=threshold,
-        )
-    aggregated["class_decisions"] = (
-        aggregated["net_score"] > threshold
-    ) & aggregated["has_valid_predictions"]
-    aggregated["complete_failure"] = torch.all(
-        ~aggregated["has_valid_predictions"], dim=1
-    )
-    return predictions, aggregated
+    return aggregated["base_learner_predictions"], aggregated
 
 
 class ModelInfoAPI(Resource):

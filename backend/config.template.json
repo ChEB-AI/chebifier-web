@@ -1,7 +1,6 @@
 {
   "TESTING": true,
   "CHEBI_VERSION": 252,
-  "CHEBI_GRAPH": "path/to/chebi_graph_v252.pkl (optional, downloaded from Hugging Face if missing)",
   "ENSEMBLE_CONFIG": "web (or 'eval', or a path to a custom chebifier ensemble config listing the base learners; downloaded from Hugging Face for the named configs)",
   "ENSEMBLE_TYPE": "wmv-f1",
   "ENSEMBLE_DIR": null,
