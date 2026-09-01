@@ -38,7 +38,8 @@ def load_endpoints():
     api.add_resource(PredictionDetailApiHandler, '/api/details')
     api.add_resource(BatchPrediction, '/api/classify')
     api.add_resource(ModelInfoAPI, '/api/modelinfo')
-c
+
+
 with app.app_context():
     mp.set_start_method("spawn")
     load_endpoints()

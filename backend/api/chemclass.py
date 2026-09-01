@@ -1,6 +1,5 @@
 import copy
 import csv
-import math
 import os
 
 import matplotlib as mpl
@@ -8,44 +7,27 @@ import torch
 from app import app
 from flask_restful import Resource, abort, reqparse
 
-from api.ensemble import DEFAULT_MODEL_WEIGHT, WeightedWMVF1Ensemble
+from chebifier.cli import (
+    build_base_learners,
+    build_ensemble_model,
+    jsonable,
+    read_classes,
+    read_model_weights,
+)
 from chebifier.inconsistency_resolution import ScoreBasedPredictionSmoother
-from chebifier.model_registry import MODEL_TYPES
 from chebifier.predict import (
     apply_inconsistency_resolution,
     collect_base_learner_predictions,
     get_base_learner_predictions,
 )
+from chebifier.utils import download_ensemble_calibration, get_disjoint_files, to_smiles
 from chebi_utils.read_molecule import smiles_or_inchi_to_mol
-from chebifier.utils import get_disjoint_files, to_smiles
 from ontology import CHEBI_GRAPH, class_name, most_specific, to_vis_graph
 
 mpl.use("Agg")
 
-MODEL_CONFIG = app.config["MODELS"]
-
-
-def build_models():
-    models = {}
-    for model_name, config in MODEL_CONFIG.items():
-        config = dict(config)
-        model_type = config.pop("type")
-        config.pop("calibration_name", None)
-        print(f"Building {model_name} ({model_type})...")
-        models[model_name] = MODEL_TYPES[model_type](
-            model_name, **config, chebi_graph=CHEBI_GRAPH
-        )
-    return models
-
-
-def read_ensemble_classes():
-    """The classes the ensemble was calibrated on.
-
-    The class-wise F1 scores of the calibration are stored as one value per class, so the ensemble
-    can only run on exactly this class list - and in this order.
-    """
-    with open(app.config["ENSEMBLE_CLASSES"], "r", encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
+# A model without an explicit model_weight in the ensemble config votes with weight 1.
+DEFAULT_MODEL_WEIGHT = 1
 
 
 class CachedSmoother(ScoreBasedPredictionSmoother):
@@ -59,6 +41,68 @@ class CachedSmoother(ScoreBasedPredictionSmoother):
         if label_names is not None and label_names == getattr(self, "label_names", None):
             return
         super().set_label_names(label_names)
+
+
+ENSEMBLE_CONFIG = app.config["ENSEMBLE_CONFIG"]
+ENSEMBLE_TYPE = app.config.get("ENSEMBLE_TYPE", "wmv-f1")
+ENSEMBLE_DIR = app.config.get("ENSEMBLE_DIR") or download_ensemble_calibration()
+
+MODELS = build_base_learners(ENSEMBLE_CONFIG)
+ENSEMBLE = build_ensemble_model(ENSEMBLE_TYPE, ENSEMBLE_DIR, ENSEMBLE_CONFIG)
+ENSEMBLE_CLASSES = read_classes(os.path.join(ENSEMBLE_DIR, "ensemble_classes.txt"))
+CLASS_INDEX = {cls: idx for idx, cls in enumerate(ENSEMBLE_CLASSES)}
+DECISION_THRESHOLD = ENSEMBLE.decision_threshold
+
+# every model votes with weight 1 unless the ensemble config gives it an explicit model_weight
+DEFAULT_MODEL_WEIGHTS = {model_name: DEFAULT_MODEL_WEIGHT for model_name in MODELS}
+DEFAULT_MODEL_WEIGHTS.update(read_model_weights(ENSEMBLE_CONFIG))
+
+
+# The ensemble lazily caches class-wise F1 scores on `model_f1_scores` the first time it loads them.
+# Warm that cache once at startup so the per-request reweighted() clones (shallow copies) inherit the
+# populated dict; otherwise a clone starting from an empty cache re-reads the files from disk and, being
+# discarded after the request, never persists them back to the shared instance.
+if hasattr(ENSEMBLE, "_load_classwise_f1"):
+    for model_name in MODELS:
+        ENSEMBLE._load_classwise_f1(model_name, len(ENSEMBLE_CLASSES))
+
+
+def reweighted(ensemble, model_weights):
+    """A view of the ensemble that votes with the given per-model weights.
+
+    The clone shares the loaded calibration, so this is cheap enough to do per request - and unlike
+    mutating the shared instance it stays correct when requests overlap. 
+    """
+    if not model_weights:
+        return ensemble
+    clone = copy.copy(ensemble)
+    clone.model_weights = {**ensemble.model_weights, **model_weights}
+    return clone
+
+
+MODEL_PRESENTATION = app.config.get("MODEL_PRESENTATION", {})
+PUBLIC_NAME = {name: MODEL_PRESENTATION.get(name, {}).get("name", name) for name in MODELS}
+INTERNAL_NAME = {public: name for name, public in PUBLIC_NAME.items()}
+MODEL_DESCRIPTIONS = {
+    name: MODEL_PRESENTATION.get(name, {}).get("description", "") for name in MODELS
+}
+
+
+def to_public(model_name):
+    return PUBLIC_NAME.get(model_name, model_name)
+
+
+def to_internal(model_name):
+    """Public -> internal name. Aliases and unknown names pass through unchanged, to be resolved or
+    rejected downstream."""
+    return INTERNAL_NAME.get(model_name, model_name)
+
+
+def internalize(model_map):
+    """Translate the keys of a {model name: value} request map from public to internal names."""
+    if not model_map:
+        return model_map
+    return {to_internal(name): value for name, value in model_map.items()}
 
 
 def build_model_aliases():
@@ -82,23 +126,7 @@ def build_model_aliases():
     return aliases
 
 
-MODELS = build_models()
 MODEL_ALIASES = build_model_aliases()
-DEFAULT_MODEL_WEIGHTS = {
-    model_name: config.get("model_weight", DEFAULT_MODEL_WEIGHT)
-    for model_name, config in MODEL_CONFIG.items()
-}
-ENSEMBLE = WeightedWMVF1Ensemble(
-    app.config["ENSEMBLE_DIR"],
-    calibration_names={
-        model_name: config.get("calibration_name", model_name)
-        for model_name, config in MODEL_CONFIG.items()
-    },
-    model_weights=DEFAULT_MODEL_WEIGHTS,
-)
-ENSEMBLE_CLASSES = read_ensemble_classes()
-CLASS_INDEX = {cls: idx for idx, cls in enumerate(ENSEMBLE_CLASSES)}
-DECISION_THRESHOLD = ENSEMBLE.decision_threshold
 SMOOTHER = (
     CachedSmoother(
         chebi_graph=CHEBI_GRAPH,
@@ -109,6 +137,8 @@ SMOOTHER = (
     if app.config["INCONSISTENCY_RESOLUTION"] == "score-based"
     else None
 )
+
+
 def read_operating_points():
     """The measured precision/recall of the ensemble at a range of decision thresholds.
 
@@ -175,8 +205,8 @@ def resolve_requested_models(names):
         abort(
             400,
             message=(
-                f"Unknown model(s): {', '.join(repr(name) for name in unknown)}. "
-                f"Available models: {', '.join(repr(name) for name in MODELS)}. "
+                f"Unknown model(s): {', '.join(repr(to_public(name)) for name in unknown)}. "
+                f"Available models: {', '.join(repr(to_public(name)) for name in MODELS)}. "
                 f"Aliases: {', '.join(repr(name) for name in MODEL_ALIASES) or 'none'}."
             ),
         )
@@ -203,12 +233,6 @@ def requested_weights(model_weights):
         except (TypeError, ValueError):
             continue
     return weights
-
-
-def jsonable(value):
-    """JSON has no NaN, and a base learner that did not cover a class reports exactly that."""
-    value = float(value)
-    return None if math.isnan(value) else value
 
 
 def near_miss_classes(aggregated, row, threshold):
@@ -258,7 +282,7 @@ def run_ensemble(model_names, smiles_list, model_weights, threshold, resolve=Tru
     predictions, _ = collect_base_learner_predictions(
         predictions, classes=ENSEMBLE_CLASSES
     )
-    aggregated = ENSEMBLE.with_weights(model_weights).predict(
+    aggregated = reweighted(ENSEMBLE, model_weights).predict(
         predictions, attribution=True
     )
     if SMOOTHER is not None and resolve:
@@ -287,14 +311,19 @@ class ModelInfoAPI(Resource):
 
     def get(self):
         return {
-            "available_models": list(MODELS),
+            "available_models": [to_public(name) for name in MODELS],
             "available_models_info_texts": [
-                model.info_text for model in MODELS.values()
+                MODEL_DESCRIPTIONS[name] for name in MODELS
             ],
             # alias -> the model it currently stands for, so a client can name one without
             # pinning itself to whichever model happens to fill that role today
-            "model_aliases": MODEL_ALIASES,
-            "default_model_weights": DEFAULT_MODEL_WEIGHTS,
+            "model_aliases": {
+                alias: to_public(target) for alias, target in MODEL_ALIASES.items()
+            },
+            "default_model_weights": {
+                to_public(name): weight
+                for name, weight in DEFAULT_MODEL_WEIGHTS.items()
+            },
             "decision_threshold": DECISION_THRESHOLD,
             "operating_points": OPERATING_POINTS,
             "n_classes": len(ENSEMBLE_CLASSES),
@@ -348,9 +377,10 @@ class BatchPrediction(Resource):
         smiles = args["smiles"]
         generate_ontology = args["ontology"]
         threshold = requested_threshold(args["decisionThreshold"])
+        selected_models = internalize(args["selectedModels"])
         # up front, so an unknown model name is reported whatever the rest of the request looks like
-        weights = requested_weights(args["modelWeights"])
-        selected = running_model_names(args["selectedModels"], weights)
+        weights = requested_weights(internalize(args["modelWeights"]))
+        selected = running_model_names(selected_models, weights)
         if not selected:
             abort(
                 400,
@@ -417,7 +447,7 @@ class BatchPrediction(Resource):
                         negative[smiles_idx, class_idx, model_idx]
                     )
                     if vote:
-                        models[model_name] = {
+                        models[to_public(model_name)] = {
                             "prediction": jsonable(
                                 predictions[model_name][smiles_idx, class_idx]
                             ),
@@ -463,12 +493,14 @@ class PredictionDetailApiHandler(Resource):
         explain_infos = {"models": dict()}
         if smiles is None:
             return explain_infos
-        for model_name in selected_model_names(args["selectedModels"]):
+        for model_name in selected_model_names(internalize(args["selectedModels"])):
             model = MODELS[model_name]
             explain_infos_model = model.explain_smiles(smiles)
             if explain_infos_model is not None:
                 explain_infos_model["model_type"] = model.__class__.__name__
-                explain_infos_model["model_info"] = model.info_text
-                explain_infos["models"][model_name] = explain_infos_model
+                explain_infos_model["model_info"] = MODEL_DESCRIPTIONS.get(
+                    model_name, model.info_text
+                )
+                explain_infos["models"][to_public(model_name)] = explain_infos_model
 
         return explain_infos

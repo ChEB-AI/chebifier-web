@@ -14,5 +14,5 @@ chebai-graph
 chebi-utils>=0.3
 chemlog-extra
 c3p
-chebifier>=1.2.1
+chebifier>=1.3.0
 multiprocess
