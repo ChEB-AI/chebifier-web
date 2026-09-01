@@ -21,9 +21,16 @@ const Navbar = () => {
         <Link to="/about">About</Link>
       </li>
       <li>
-        <a href="https://github.com/ChEB-AI/Chebifier/issues">Report an Issue</a>
+        <a href="https://github.com/ChEB-AI/chebifier-web/issues">Report an Issue</a>
       </li>
     </ul>
+  </div>
+  <div className="navbar-right">
+    <span className="citation">
+      If you like Chebifier, please cite: Glauer, Martin, et al. "Chebifier: Automating Semantic
+      Classification in ChEBI to Accelerate Data-driven Discovery."{" "}
+      <a href="https://pubs.rsc.org/en/content/articlehtml/2024/dd/d3dd00238a">Digital Discovery, 2024, 3, 896</a>.
+    </span>
   </div>
 </nav>
       <Outlet />

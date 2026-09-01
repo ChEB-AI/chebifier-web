@@ -1,12 +1,16 @@
 {
-    "TESTING":true,
-    "CHEBI_JSON": "path-to-chebi-export.json",
-    "MODELS": {
-        "My model": {
-            "type": "chebifier type (e.g. electra)",
-            "ckpt_path": "path/to/checkpoint.ckpt",
-            "batch_size": 32,
-            "classwise_weights_path": "path/to/trust.json"
-        }
+  "TESTING": true,
+  "CHEBI_VERSION": 252,
+  "ENSEMBLE_CONFIG": "web (or 'eval', or a path to a custom chebifier ensemble config listing the base learners; downloaded from Hugging Face for the named configs)",
+  "ENSEMBLE_TYPE": "wmv-f1",
+  "ENSEMBLE_DIR": null,
+  "PR_CURVE": "precision/recall curve of the ensemble over the decision threshold (optional; enables the precision/recall sliders)",
+  "INCONSISTENCY_RESOLUTION": "score-based",
+  "BEST_MODEL": null,
+  "MODEL_PRESENTATION": {
+    "<model name as keyed in the ensemble config>": {
+      "name": "friendly display name shown in the web app",
+      "description": "HTML shown in the model info panel of the web app"
     }
+  }
 }

@@ -11,6 +11,8 @@ gavel>=0.1.7
 chemlog>=1.0.6
 chebai>=1.2.0
 chebai-graph
+chebi-utils>=0.3
 chemlog-extra
-chebifier>=1.2.1
+c3p
+chebifier>=1.3.0
 multiprocess

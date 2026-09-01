@@ -1,4 +1,3 @@
-import logo from './logo.svg';
 import './App.css';
 import Navbar from './navbar.js';
 import '../node_modules/vis-network/styles/vis-network.css';

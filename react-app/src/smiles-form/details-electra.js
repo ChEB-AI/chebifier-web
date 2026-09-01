@@ -1,29 +1,14 @@
 import React from 'react';
-import axios from 'axios'
 
 import {useEffect, useRef} from "react";
 import {Network} from "vis-network";
 
-import Accordion from '@mui/material/Accordion';
-import AccordionSummary from '@mui/material/AccordionSummary';
-import AccordionDetails from '@mui/material/AccordionDetails';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import CancelIcon from '@mui/icons-material/Close';
-import Divider from '@mui/material/Divider';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import FormControl from '@mui/material/FormControl';
-import Grid from '@mui/material/Grid';
-import Paper from '@mui/material/Paper';
-import Skeleton from '@mui/material/Skeleton';
-import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
 import TabContext from '@mui/lab/TabContext';
 import TabList from '@mui/lab/TabList';
 import TabPanel from '@mui/lab/TabPanel';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import {styled} from '@mui/material/styles';
 
 
 const NetworkElement = (data) => {

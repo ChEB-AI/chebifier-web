@@ -1,0 +1,55 @@
+name: Wrong prediction
+description: Report a ChEBI class Chebifier got wrong - one it predicted that does not apply, or one it missed
+title: "[Prediction] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping to improve Chebifier. If you arrived here from the "Report a wrong
+        prediction" button in the web app, the molecule and the prediction details are already
+        filled in below - please tell us what should have happened instead, and why.
+  - type: input
+    id: molecule
+    attributes:
+      label: Molecule
+      description: The SMILES or InChI string that was classified.
+      placeholder: CC(=O)Oc1ccccc1C(=O)O
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What went wrong?
+      options:
+        - A class was predicted that does not apply
+        - A class that applies was not predicted
+        - The classification is right but the explanation is not
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: classes
+    attributes:
+      label: Classes concerned
+      description: Which ChEBI classes are affected? Please give the ChEBI ids where you can.
+      placeholder: |
+        CHEBI:22315 (alkaloid) should not have been predicted.
+    validations:
+      required: true
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why is this wrong?
+      description: >
+        What is the correct classification, and what makes it correct? A definition, a reference or
+        the structural feature that decides it all help us a great deal.
+    validations:
+      required: true
+  - type: textarea
+    id: prediction
+    attributes:
+      label: Prediction details
+      description: >
+        Filled in by the web app - the ensemble score, what each model contributed, and the
+        settings the prediction was made with. Leave it as it is unless it is empty.
+      render: text

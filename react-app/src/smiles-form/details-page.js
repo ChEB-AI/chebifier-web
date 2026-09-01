@@ -1,5 +1,3 @@
-import React from 'react';
-
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -7,22 +5,8 @@ import Box from '@mui/material/Box';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Typography from '@mui/material/Typography';
 
-import {plot_ontology} from "./ontology-utils";
 import {DetailsElectra} from "./details-electra";
 import {DetailsBlockwise} from "./details-page-chemlog";
-
-const Legend = ({ colors }) => {
-  return (
-    <Box>
-      {Object.entries(colors).map(([color, text]) => (
-        <Box key={color} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-          <Box sx={{ width: 30, height: 10, backgroundColor: color, borderRadius: 1 }} />
-          <Typography sx={{ ml: 1 }}>{text}</Typography>
-        </Box>
-      ))}
-    </Box>
-  );
-};
 
 export function DetailsPerModel(data) {
   const models_info = data.models_info || {};

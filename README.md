@@ -3,36 +3,12 @@
 Chebifier is a tool for automated classification of chemicals in the [ChEBI](https://www.ebi.ac.uk/chebi/) ontology. This repository only hosts the front end of Chebifier. For the classification itself, see [python-chebifier](https://github.com/ChEB-AI/python-chebifier).
 
 ## News
+- 2026/08/18: Recalibrated ensemble (with ~500 new classes), added new deep learning models (v252) and model attributions. Now supports InChI input, user feedback, and extended ensemble settings.
 - 2026/02/16: Added Lopster and new deep learning models.
 - 2025/11/11: Fixed processing error for GNNs.
 - 2025/11/05: Added new models (v244, including GAT, 3-STAR models and augmented GNNs), redesigned frontend.
-- 2025/10/01: Fixed issue where server crashed if running predict without adding a SMILES string.
-- 2025/10/01: Improved loading times significantly by only passing ChEBI-related information when needed.
 
 ## Installation
-
-### Setup Backend
-
-Some dependencies require that pytorch is already installed:
-
-`pip install torch`
-
-After that, you can install the prediction system and web framework:
-
-`pip install -r backend/requirements.txt`
-
-*Chebifier* comes with a number of mandatory configuration files. `config.template.json` contains a template for a *Chebifier* configuration. Copy the contents of this file 
-
-`cp backend/config.template.json backend/config.json`
-
-and change the path for each setting according to your setup.
-
-The ensemble can take any models that are implemented in [python-chebifier](https://github.com/ChEB-AI/python-chebifier). See the repository for example configurations. Common arguments for a model are:
- * `type`: one of the available [MODEL_TYPES](https://github.com/ChEB-AI/python-chebifier/blob/dev/chebifier/model_registry.py), e.g. `electra`,
- * `batch_size`: Number of molecules that are passed to the model at once,
- * `classwise_weights_path` (optional): Weights that should be assigned to each class (i.e., trust scores calculated on a validation set with [this script](https://github.com/ChEB-AI/python-chebai/blob/dev/chebai/result/generate_class_properties.py)
-
-
 
 ### Setup Frontend
 
@@ -44,14 +20,52 @@ npm run build
 
 ### Run in development
 
-You can now start the development server with 
+You can now start the development server with
 
 ```
 cd backend
 flask run
 ```
 
-The server should now run at [localhost:5000](localhost:5000)
+The server should now run at [localhost:5000](localhost:5000), serving both the API and the built
+frontend. Start it from the `backend` directory - the configuration and `data/disjoint_*.csv` are
+looked up relative to the working directory. The first startup may take a bit longer: the ChEBI graph, the model
+checkpoints and the ChEBI lookup table are all loaded up front.
+
+The backend has to run in an environment that has `chebifier` installed.
+
+### Setup Backend
+
+Some dependencies require that pytorch is already installed:
+
+`pip install torch`
+
+After that, you can install the prediction system and web framework:
+
+`pip install -r backend/requirements.txt`
+
+`config.template.json` contains a template for a *Chebifier* configuration. Copy the contents of this file 
+
+`cp backend/config.template.json backend/config.json`
+
+and change the path for each setting according to your setup. An example configuration is available on [Hugging Face](https://huggingface.co/datasets/chebai/chebifier/blob/main/web_assets/config.json). Note that this does not touch the actual ensemble behaviour. For the ensemble, see [python-chebifier](https://github.com/ChEB-AI/python-chebifier). 
+
+To use the precision/recall sliders, you can download the csv table from [Hugging Face](https://huggingface.co/datasets/chebai/chebifier/blob/main/web_assets/pr_curve.csv) and set the "PR_CURVE" parameter in the config file. 
+
+### Windows: enable long paths
+
+On the first startup the model checkpoints are downloaded from Hugging Face into the local cache. Some
+checkpoint paths exceed Windows' default 260-character `MAX_PATH` limit, which makes the download fail
+with a `FileNotFoundError` during `build_base_learners`. Enable long-path support once, in an
+**Administrator** PowerShell:
+
+```powershell
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1 -Type DWord
+```
+
+Then start a fresh terminal (the flag is read at process startup) before running the backend again; a
+reboot may be needed if a fresh shell still fails. Python 3.6+ is long-path-aware, so no code or cache
+changes are required.
 
 ## Citation
 
