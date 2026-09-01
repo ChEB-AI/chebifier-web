@@ -384,9 +384,9 @@ export default function ClassificationGrid() {
   const handleDownload = (event) => {
     event.preventDefault();
     const fileData = JSON.stringify(rows.map((r) => ({
-      "smiles": r["smiles"],
-      "direct_parents": (r["direct_parents"] || []).map(element => [element[0], element[1]]),
+      "input": r["smiles"],
       "predicted_parents": r["predicted_parents"],
+      "direct_parents": (r["direct_parents"] || []).map(element => [element[0], element[1]]),
     })).filter((d) => d.direct_parents?.length > 0));
     const blob = new Blob([fileData], {type: "application/json"});
     const url = URL.createObjectURL(blob);
