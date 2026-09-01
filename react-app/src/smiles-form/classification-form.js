@@ -387,13 +387,14 @@ export default function ClassificationGrid() {
       "smiles": r["smiles"],
       "direct_parents": (r["direct_parents"] || []).map(element => [element[0], element[1]]),
       "predicted_parents": r["predicted_parents"],
-    })).filter((d) => d.direct_parents?.length >= 0));
-    const blob = new Blob([fileData], {type: "text/plain"});
+    })).filter((d) => d.direct_parents?.length > 0));
+    const blob = new Blob([fileData], {type: "application/json"});
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.download = "chebifier-predictions.json";
     link.href = url;
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   // Append helper for example SMILES buttons
