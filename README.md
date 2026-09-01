@@ -52,6 +52,21 @@ and change the path for each setting according to your setup. An example configu
 
 To use the precision/recall sliders, you can download the csv table from [Hugging Face](https://huggingface.co/datasets/chebai/chebifier/blob/main/web_assets/pr_curve.csv) and set the "PR_CURVE" parameter in the config file. 
 
+### Windows: enable long paths
+
+On the first startup the model checkpoints are downloaded from Hugging Face into the local cache. Some
+checkpoint paths exceed Windows' default 260-character `MAX_PATH` limit, which makes the download fail
+with a `FileNotFoundError` during `build_base_learners`. Enable long-path support once, in an
+**Administrator** PowerShell:
+
+```powershell
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1 -Type DWord
+```
+
+Then start a fresh terminal (the flag is read at process startup) before running the backend again; a
+reboot may be needed if a fresh shell still fails. Python 3.6+ is long-path-aware, so no code or cache
+changes are required.
+
 ## Citation
 
 If you found Chebifier useful, please cite: 
