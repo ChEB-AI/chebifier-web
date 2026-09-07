@@ -2,7 +2,7 @@
 
 Chebifier is a tool for automated classification of chemicals in the [ChEBI](https://www.ebi.ac.uk/chebi/) ontology. This repository only hosts the front end of Chebifier. For the classification itself, see [python-chebifier](https://github.com/ChEB-AI/python-chebifier).
 
-A web server running Chebifier is available [here](https://chebifier.hastingslab.org/)
+A web server running Chebifier is available [here](https://chebifier.hastingslab.org/).
 
 ## News
 - 2026/08/18: Recalibrated ensemble (with ~500 new classes), added new deep learning models (v252) and model attributions. Now supports InChI input, user feedback, and extended ensemble settings.
