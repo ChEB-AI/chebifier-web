@@ -1,6 +1,6 @@
 flask
 flask-restful
 flask-cors
-chebifier>=1.3.0
+chebifier[models]>=1.3.0
 matplotlib
 multiprocess
