@@ -40,6 +40,8 @@ const About = () => {
     const [availableModels, setAvailableModels] = React.useState([]);
     const [availableModelsInfoTexts, setAvailableModelsInfoTexts] = React.useState([]);
     const [numClasses, setNumClasses] = React.useState(null);
+    // which chebifier release and ensemble config the server runs, i.e. what reproduces its results
+    const [versionInfo, setVersionInfo] = React.useState(null);
 
     // Load once on mount so About content is fetched when the site loads
     React.useEffect(() => {
@@ -47,6 +49,13 @@ const About = () => {
             setAvailableModels(response.data.available_models || []);
             setAvailableModelsInfoTexts(response.data.available_models_info_texts || []);
             setNumClasses(response.data.n_classes || null);
+            if (response.data.chebifier_version) {
+                setVersionInfo({
+                    chebifier: response.data.chebifier_version,
+                    config: response.data.ensemble_config,
+                    shortcut: response.data.ensemble_config_shortcut,
+                });
+            }
         }).catch(() => {
             // silently ignore, page content still renders
         });
@@ -68,12 +77,12 @@ const About = () => {
                     <Box sx={{width: '90%', maxWidth: '900px', textAlign: 'left'}}>
                         <Section>
                             <Typography variant="h4" component="h1" gutterBottom>About Chebifier</Typography>
-                            <Typography variant="body1" paragraph>
+                            <Typography variant="body1" sx={{mb: 0}}>
                                 Chebifier is a tool for automated classification of chemicals in
                                 the <Link href="https://www.ebi.ac.uk/chebi/">ChEBI</Link> ontology. It currently
                                 predicts {numClasses ? numClasses.toLocaleString('en-US') : '2,200+'} ChEBI classes.
                             </Typography>
-                            <Typography variant="body1" sx={{mb: 0}}>
+                            <Typography variant="body1" paragraph>
                                 To run a prediction, enter SMILES or InChI strings (one per line)
                                 or upload a file. Running the models might take a few
                                 seconds. Click on a result for more details about the prediction.
@@ -81,11 +90,11 @@ const About = () => {
                             <Typography variant="body1" paragraph>
                                 Chebifier is developed as part of the <Link href="https://hastingslab.org/projects/2_project/">StrOntEx project</Link>.
                                 For more information on Chebifier, checkout the <Link href="https://github.com/ChEB-AI/python-chebifier">GitHub repository</Link> and 
-                                our <Link href="https://www.researchsquare.com/article/rs-9023090/v1">latest publication (Flügel et al, 2026: Chebifier 2)</Link>.
+                                our <Link href="https://www.researchsquare.com/article/rs-9023090/latest">latest publication (Flügel et al, 2026: Chebifier 2)</Link>.
                             </Typography>
                         </Section>
 
-                        <Section title="The Ensemble">
+                        <Section title="The ensemble">
                             <Typography variant="body1" paragraph>
                                 Chebifier combines machine learning models, rule-based methods and a ChEBI lookup.
                                 For every class, each model that covers it casts a vote. This vote gets weighted by how
@@ -144,6 +153,36 @@ const About = () => {
                                 </Box>
                             ))}
                         </Section>
+
+                        {versionInfo && (
+                            <Section title="Reproducing results">
+                                <Typography variant="body1" paragraph>
+                                    This server runs <Link href="https://github.com/ChEB-AI/python-chebifier">chebifier</Link>{' '}
+                                    <b>{versionInfo.chebifier}</b>{versionInfo.config
+                                        ? <> with the ensemble configuration <b>{versionInfo.config}</b>.</>
+                                        : <> with a custom ensemble configuration.</>}
+                                </Typography>
+                                {versionInfo.config && versionInfo.shortcut && (
+                                    <>
+                                        <Typography variant="body1" paragraph>
+                                            To get the same predictions locally, match the chebifier version and configuration. 
+                                            For details, check out the <Link href="https://github.com/ChEB-AI/python-chebifier">GitHub repository</Link>.
+                                        </Typography>
+                                        <Box component="pre" sx={{
+                                            m: 0,
+                                            p: 1.5,
+                                            backgroundColor: '#f5f7fa',
+                                            borderRadius: 1,
+                                            fontSize: '0.85rem',
+                                            overflowX: 'auto',
+                                        }}>
+                                            {`pip install "chebifier[models]==${versionInfo.chebifier}"\n` +
+                                                `python -m chebifier predict -e ${versionInfo.shortcut} -m "CC(=O)O"`}
+                                        </Box>
+                                    </>
+                                )}
+                            </Section>
+                        )}
 
                         <Section title="Main publication for Chebifier">
                             <Typography variant="body1" sx={{mb: 0}}>

@@ -1,7 +1,7 @@
 {
   "TESTING": true,
   "CHEBI_VERSION": 252,
-  "ENSEMBLE_CONFIG": "web (or 'eval', or a path to a custom chebifier ensemble config listing the base learners; downloaded from Hugging Face for the named configs)",
+  "ENSEMBLE_CONFIG": "web (or 'eval', or a versioned key such as '26-09_web' that pins the config and fails at startup if the installed chebifier ships a different one, or a path to a custom chebifier ensemble config listing the base learners; downloaded from Hugging Face for the named configs)",
   "ENSEMBLE_TYPE": "wmv-f1",
   "ENSEMBLE_DIR": null,
   "PR_CURVE": "precision/recall curve of the ensemble over the decision threshold (optional; enables the precision/recall sliders)",

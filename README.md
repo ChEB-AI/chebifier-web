@@ -5,10 +5,8 @@ Chebifier is a tool for automated classification of chemicals in the [ChEBI](htt
 A web server running Chebifier is available [here](https://chebifier.hastingslab.org/).
 
 ## News
-- 2026/08/18: Recalibrated ensemble (with ~500 new classes), added new deep learning models (v252) and model attributions. Now supports InChI input, user feedback, and extended ensemble settings.
+- 2026/08/18: Recalibrated ensemble (with ~500 new classes), added new deep learning models (v252) and model attributions. Now supports InChI input, user feedback, and extended ensemble settings. Uses `chebifier==1.3.0` and ensemble config `26-09_web`.
 - 2026/02/16: Added Lopster and new deep learning models.
-- 2025/11/11: Fixed processing error for GNNs.
-- 2025/11/05: Added new models (v244, including GAT, 3-STAR models and augmented GNNs), redesigned frontend.
 
 ## Installation
 
@@ -51,6 +49,13 @@ After that, you can install the prediction system and web framework:
 `cp backend/config.template.json backend/config.json`
 
 and change the path for each setting according to your setup. An example configuration is available on [Hugging Face](https://huggingface.co/datasets/chebai/chebifier/blob/main/web_assets/config.json). Note that this does not touch the actual ensemble behaviour. For the ensemble, see [python-chebifier](https://github.com/ChEB-AI/python-chebifier). 
+
+### Reproducing chebifier.hastingslab.org
+
+To get the same results as the version currently running on [chebifier.hastingslab.org](chebifier.hastingslab.org), 
+make sure to match the [`chebifier`](https://github.com/ChEB-AI/python-chebifier) version displayed on the [about page](https://chebifier.hastingslab.org/about)
+and the ensemble configuration. Currently, to configs are supported, `web` for the online version, `eval` for the version used 
+in [Flügel et al.: _Chebifier 2: An Ensemble for Chemistry_, 2026 (preprint)](https://www.researchsquare.com/article/rs-9023090/latest).
 
 To use the precision/recall sliders, you can download the csv table from [Hugging Face](https://huggingface.co/datasets/chebai/chebifier/blob/main/web_assets/pr_curve.csv) and set the "PR_CURVE" parameter in the config file. 
 
