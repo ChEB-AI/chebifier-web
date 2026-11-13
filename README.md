@@ -54,7 +54,7 @@ and change the path for each setting according to your setup. An example configu
 
 To get the same results as the version currently running on [chebifier.hastingslab.org](chebifier.hastingslab.org), 
 make sure to match the [`chebifier`](https://github.com/ChEB-AI/python-chebifier) version displayed on the [about page](https://chebifier.hastingslab.org/about)
-and the ensemble configuration. Currently, to configs are supported, `web` for the online version, `eval` for the version used 
+and the ensemble configuration. The ensemble configuration defines which models are used and how they get weighted. Currently, two configs are supported, [`web`](https://huggingface.co/datasets/chebai/chebifier/blob/main/config_26-09_web.yml) for the online version, [`eval`](https://huggingface.co/datasets/chebai/chebifier/blob/main/config_26-09_eval.yml) for the version used 
 in [Flügel et al.: _Chebifier 2: An Ensemble for Chemistry_, 2026 (preprint)](https://www.researchsquare.com/article/rs-9023090/latest).
 
 To use the precision/recall sliders, you can download the csv table from [Hugging Face](https://huggingface.co/datasets/chebai/chebifier/blob/main/web_assets/pr_curve.csv) and set the "PR_CURVE" parameter in the config file. 

@@ -161,6 +161,7 @@ const About = () => {
                                     <b>{versionInfo.chebifier}</b>{versionInfo.config
                                         ? <> with the ensemble configuration <b>{versionInfo.config}</b>.</>
                                         : <> with a custom ensemble configuration.</>}
+                                    The ensemble configuration contains model weights and meta-parameters for the ensemble.
                                 </Typography>
                                 {versionInfo.config && versionInfo.shortcut && (
                                     <>
@@ -177,6 +178,7 @@ const About = () => {
                                             overflowX: 'auto',
                                         }}>
                                             {`pip install "chebifier[models]==${versionInfo.chebifier}"\n` +
+                                             `# -e ${versionInfo.shortcut} loads the ${versionInfo.config} configuration\n` +
                                                 `python -m chebifier predict -e ${versionInfo.shortcut} -m "CC(=O)O"`}
                                         </Box>
                                     </>
