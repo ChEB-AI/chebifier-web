@@ -74,6 +74,32 @@ Then start a fresh terminal (the flag is read at process startup) before running
 reboot may be needed if a fresh shell still fails. Python 3.6+ is long-path-aware, so no code or cache
 changes are required.
 
+## Tests
+
+Every push and pull request to `main` runs both test suites on GitHub Actions (`.github/workflows/ci.yml`).
+
+The backend tests run the API against the real ensemble, so they need a working `backend/config.json`
+(CI uses [`backend/tests/config.ci.json`](backend/tests/config.ci.json)) and the models (downloaded on first use):
+
+```
+cd backend
+pip install pytest
+pytest
+```
+
+Besides the API contract (empty and invalid input, unknown models, insights, ...), they check that
+the models give realistic results for a few obvious molecules - e.g. that ethanol is predicted to be
+an alcohol and not a carboxylic acid. This catches a broken system, such as a model with a swapped
+classes file. The graph models also need PyTorch Geometric and `torch_scatter`
+(`pip install torch_geometric torch_scatter -f https://data.pyg.org/whl/torch-<torch version>+cpu.html`).
+
+The frontend tests mock the backend:
+
+```
+cd react-app
+CI=true npm test
+```
+
 ## Citation
 
 If you found Chebifier useful, please cite: 
