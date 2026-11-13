@@ -8,6 +8,7 @@ import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { loadRDKit } from '../lib/rdkit-loader';
+import { getMol } from '../lib/rdkit-mol';
 import Alert from "@mui/material/Alert";
 
 const MIN_SCALE = 0.62;
@@ -54,6 +55,65 @@ const GRAPH_OPTIONS = {
     },
 };
 
+// RDKit draws the molecule at this size; the canvas scales it, so it only sets how much detail the
+// zoomed-out (cached) rendering keeps - zooming in redraws the SVG itself and stays sharp
+const MOLECULE_SVG_SIZE = 500;
+
+const MOLECULE_OPTIONS = {
+    physics: false,
+    nodes: {
+        shape: 'image',
+        // a square image, so its size is known before it has loaded and fit() can run right away
+        size: MOLECULE_SVG_SIZE / 2,
+        shapeProperties: {useImageSize: false, interpolation: true},
+        // no hover or selection styling - the picture is all there is
+        chosen: false,
+    },
+    interaction: {
+        dragNodes: false,
+        dragView: true,
+        zoomView: true,
+        selectable: false,
+        hover: false,
+    },
+};
+
+/**
+ * Fit everything into view, but zoom out no further than minScale (if given).
+ * Returns a stable callback for the network in networkRef, for the "Reset view" button.
+ */
+function useFitView(networkRef, minScale) {
+    return React.useCallback(() => {
+        const network = networkRef.current;
+        if (!network) return;
+        network.fit();
+        if (minScale && network.getScale() < minScale) network.moveTo({scale: minScale});
+    }, [networkRef, minScale]);
+}
+
+/** The canvas a vis network is drawn into, with a button that fits its content back into view. */
+function ZoomableCanvas({canvasRef, height, onReset, caption}) {
+    return (
+        <Box>
+            <Box sx={{position: 'relative'}}>
+                <div ref={canvasRef} style={{height}}/>
+                <Tooltip title="Fit the graph back into view">
+                    <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<CenterFocusStrongIcon/>}
+                        onClick={onReset}
+                        sx={{position: 'absolute', top: 8, left: 8, backgroundColor: '#ffffff'}}
+                    >
+                        Reset view
+                    </Button>
+                </Tooltip>
+            </Box>
+            <Typography variant="caption" color="text.secondary">{caption}</Typography>
+        </Box>
+    );
+}
+
 /**
  * The predicted part of the ChEBI hierarchy, drawn top-down from the class every molecule belongs
  * to. Selecting a node reports it to the parent, which shows why that class was predicted.
@@ -67,14 +127,9 @@ export function OntologyGraph({graph, selected, onSelect, showNearMisses = false
     const selectedRef = useRef(selected);
     selectedRef.current = selected;
 
-    const fitView = React.useCallback(() => {
-        const network = networkRef.current;
-        if (!network) return;
-        network.fit();
-        // fit() alone shrinks a deep hierarchy until the labels are unreadable; below this scale
-        // the graph is pannable instead
-        if (network.getScale() < MIN_SCALE) network.moveTo({scale: MIN_SCALE});
-    }, []);
+    // fit() alone shrinks a deep hierarchy until the labels are unreadable; below this scale the
+    // graph is pannable instead
+    const fitView = useFitView(networkRef, MIN_SCALE);
 
     useEffect(() => {
         if (!graph || !visJsRef.current) return undefined;
@@ -133,28 +188,53 @@ export function OntologyGraph({graph, selected, onSelect, showNearMisses = false
     if (!graph) return null;
 
     return (
-        <Box>
-            <Box sx={{position: 'relative'}}>
-                <div ref={visJsRef} style={{height}}/>
-                <Tooltip title="Fit the graph back into view">
-                    <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<CenterFocusStrongIcon/>}
-                        onClick={fitView}
-                        sx={{position: 'absolute', top: 8, left: 8, backgroundColor: '#ffffff'}}
-                    >
-                        Reset view
-                    </Button>
-                </Tooltip>
-            </Box>
-            <Typography variant="caption" color="text.secondary">
-                Click a class to see why it was predicted. Scroll to zoom, drag to pan.
-            </Typography>
-        </Box>
+        <ZoomableCanvas
+            canvasRef={visJsRef}
+            height={height}
+            onReset={fitView}
+            caption="Click a class to see why it was predicted. Scroll to zoom, drag to pan."
+        />
     );
 }
 
+/** An RDKit drawing on the same zoom-and-pan canvas as the ontology graph. */
+function ZoomableMolecule({svg, height = '320px'}) {
+    // vis only takes CSS strings, while the fixed-size drawing is given its size in pixels
+    if (typeof height === 'number') height = `${height}px`;
+    const visJsRef = useRef(null);
+    const networkRef = useRef(null);
+    const fitView = useFitView(networkRef);
+
+    useEffect(() => {
+        if (!visJsRef.current) return undefined;
+        const image = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        const network = new Network(
+            visJsRef.current,
+            {nodes: [{id: 'molecule', image}], edges: []},
+            {...MOLECULE_OPTIONS, height},
+        );
+        networkRef.current = network;
+        fitView();
+        return () => {
+            network.destroy();
+            networkRef.current = null;
+        };
+    }, [svg, height, fitView]);
+
+    return (
+        <ZoomableCanvas
+            canvasRef={visJsRef}
+            height={height}
+            onReset={fitView}
+            caption="Scroll to zoom, drag to pan."
+        />
+    );
+}
+
+/**
+ * The structure of a molecule as drawn by RDKit: a fixed-size picture, or with `zoomable` one that
+ * fills the width of its container and can be zoomed and panned like the ontology graph.
+ */
 export function MoleculeStructure(data) {
   const [svg, setSvg] = React.useState(null);
   const [error, setError] = React.useState(null);
@@ -171,11 +251,11 @@ export function MoleculeStructure(data) {
       try {
         const RDKit = await loadRDKit();
         if (!mounted) return;
-        mol = RDKit.get_mol(data.smiles);
-        if (!mol || mol.is_valid?.() === false) {
+        mol = getMol(RDKit, data.smiles);
+        if (!mol) {
           throw new Error('Invalid molecule');
         }
-        const svgStr = mol.get_svg();
+        const svgStr = data.zoomable ? mol.get_svg(MOLECULE_SVG_SIZE, MOLECULE_SVG_SIZE) : mol.get_svg();
         if (mounted) setSvg(svgStr);
       } catch (e) {
         if (mounted) setError(String(e));
@@ -186,10 +266,12 @@ export function MoleculeStructure(data) {
 
     if (data.smiles) run();
     return () => { mounted = false; };
-  }, [data.smiles]);
+  }, [data.smiles, data.zoomable]);
 
   if (error) return <Alert severity="error">RDKit failed to process input!</Alert>
   if (!svg) return <div>Loading molecule…</div>;
+
+  if (data.zoomable) return <ZoomableMolecule svg={svg} height={data.height}/>;
 
   return (
     <div

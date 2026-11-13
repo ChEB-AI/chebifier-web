@@ -709,9 +709,9 @@ export default function ClassificationGrid() {
                                   </Box>
                                   {renderSelectedClass(row)}
                                 </Paper>
-                                <Paper elevation={0} sx={{...panelSx, flex: '1 1 280px', minWidth: 250, overflowX: 'auto'}}>
+                                <Paper elevation={0} sx={{...panelSx, flex: '1 1 280px', minWidth: 250, overflow: 'hidden'}}>
                                   <Typography variant="subtitle2" gutterBottom>Molecular graph</Typography>
-                                  <MoleculeStructure smiles={row.resolved_smiles || row.smiles} height={250} width={250}/>
+                                  <MoleculeStructure smiles={row.resolved_smiles || row.smiles} zoomable height="320px"/>
                                 </Paper>
                                 <Paper elevation={0} sx={{...panelSx, flex: '1 1 600px', minWidth: 500, overflow: 'hidden'}}>
                                   <Typography variant="subtitle2" gutterBottom>Model-specific insights</Typography>
