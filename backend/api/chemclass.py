@@ -1,6 +1,7 @@
 import copy
 import csv
 import os
+from importlib.metadata import version
 
 import matplotlib as mpl
 import torch
@@ -15,7 +16,7 @@ from chebifier.cli import (
     read_model_weights,
 )
 from chebifier.predict import predict
-from chebifier.utils import download_ensemble_calibration, to_smiles
+from chebifier.utils import DEFAULT_CONFIGS, download_ensemble_calibration, to_smiles
 from chebi_utils.read_molecule import smiles_or_inchi_to_mol
 from ontology import class_name, most_specific, to_vis_graph
 
@@ -25,7 +26,43 @@ mpl.use("Agg")
 DEFAULT_MODEL_WEIGHT = 1
 
 
-ENSEMBLE_CONFIG = app.config["ENSEMBLE_CONFIG"]
+CHEBIFIER_VERSION = version("chebifier")
+
+
+def config_key(filename):
+    """The versioned name of a named ensemble config, e.g. config_26-09_web.yml -> 26-09_web."""
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    return stem.removeprefix("config_")
+
+
+# shortcut -> versioned key, as the installed chebifier resolves it (e.g. web -> 26-09_web)
+CONFIG_KEYS = {shortcut: config_key(filename) for shortcut, filename in DEFAULT_CONFIGS.items()}
+
+
+def resolve_ensemble_config(ensemble_config):
+    """What to hand chebifier for the configured ensemble config, and the versioned key it stands for.
+
+    The shortcuts ('web', 'eval') follow whatever the installed chebifier ships, so on their own
+    they do not say which ensemble ran. The versioned key does, which is why the config may also
+    name it directly (e.g. '26-09_web'): that pins the ensemble, and a chebifier that resolves the
+    shortcut differently fails at startup instead of quietly serving other results. A path to a
+    custom config has no key (None).
+    """
+    if ensemble_config in CONFIG_KEYS:
+        return ensemble_config, CONFIG_KEYS[ensemble_config]
+    for shortcut, key in CONFIG_KEYS.items():
+        if ensemble_config == key:
+            return shortcut, key
+    if not os.path.exists(ensemble_config):
+        raise ValueError(
+            f"ENSEMBLE_CONFIG is {ensemble_config!r}, which is neither a config file nor one of the "
+            f"ensemble configs chebifier {CHEBIFIER_VERSION} ships: "
+            f"{', '.join(f'{key} ({shortcut})' for shortcut, key in CONFIG_KEYS.items())}."
+        )
+    return ensemble_config, None
+
+
+ENSEMBLE_CONFIG, ENSEMBLE_CONFIG_KEY = resolve_ensemble_config(app.config["ENSEMBLE_CONFIG"])
 ENSEMBLE_TYPE = app.config.get("ENSEMBLE_TYPE", "wmv-f1")
 ENSEMBLE_DIR = app.config.get("ENSEMBLE_DIR") or download_ensemble_calibration()
 
@@ -160,8 +197,9 @@ NEAR_MISS_FRACTION = 0.5
 NEAR_MISS_LIMIT = 10
 
 print(
-    f"Ensemble ready: {len(MODELS)} models, {len(ENSEMBLE_CLASSES)} classes, "
-    f"decision threshold {DECISION_THRESHOLD}."
+    f"Ensemble ready: chebifier {CHEBIFIER_VERSION}, ensemble config "
+    f"{ENSEMBLE_CONFIG_KEY or ENSEMBLE_CONFIG}, {len(MODELS)} models, "
+    f"{len(ENSEMBLE_CLASSES)} classes, decision threshold {DECISION_THRESHOLD}."
 )
 
 
@@ -292,6 +330,12 @@ class ModelInfoAPI(Resource):
             "decision_threshold": DECISION_THRESHOLD,
             "operating_points": OPERATING_POINTS,
             "n_classes": len(ENSEMBLE_CLASSES),
+            # what it takes to reproduce these predictions locally: the chebifier release and the
+            # ensemble config it runs. The key is null for a custom config; the shortcut is the
+            # name the chebifier CLI takes (-e) for it.
+            "chebifier_version": CHEBIFIER_VERSION,
+            "ensemble_config": ENSEMBLE_CONFIG_KEY,
+            "ensemble_config_shortcut": ENSEMBLE_CONFIG if ENSEMBLE_CONFIG_KEY else None,
         }
 
 
