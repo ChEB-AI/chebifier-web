@@ -549,6 +549,7 @@ export default function ClassificationGrid() {
                       <input
                         type="file"
                         accept="text/plain"
+                        aria-label="SMILES file"
                         style={{display: 'none'}}
                         ref={fileInputRef}
                         onChange={handleUpload}
