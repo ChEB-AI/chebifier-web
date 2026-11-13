@@ -1,0 +1,16 @@
+{
+  "TESTING": true,
+  "CHEBI_VERSION": 252,
+  "ENSEMBLE_CONFIG": "web",
+  "ENSEMBLE_TYPE": "wmv-f1",
+  "ENSEMBLE_DIR": null,
+  "PR_CURVE": null,
+  "INCONSISTENCY_RESOLUTION": "score-based",
+  "BEST_MODEL": "gat-aug_chebi25-3star_v252",
+  "MODEL_PRESENTATION": {
+    "lookup": {
+      "name": "ChEBI Lookup",
+      "description": "If the SMILES string is equivalent to an entry in ChEBI, the classification of that entry is retrieved."
+    }
+  }
+}
