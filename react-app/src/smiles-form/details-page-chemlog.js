@@ -9,12 +9,18 @@ import Typography from '@mui/material/Typography';
 
 import Alert from "@mui/material/Alert";
 import { loadRDKit } from '../lib/rdkit-loader';
+import { getMol } from '../lib/rdkit-mol';
 
 
 const GLOBAL_MOL_PARAMS = {
 	width: 300,
 	height: 300,
 }
+
+// stands in for a drawing while there is no mol: undefined means RDKit is still loading
+const MolUnavailable = ({mol}) => mol === undefined
+    ? <div>Loading molecule…</div>
+    : <Alert severity="error">RDKit failed to process input!</Alert>;
 
 const LayerComponent = (data) => {
     const [value, setValue] = React.useState(0);
@@ -23,11 +29,7 @@ const LayerComponent = (data) => {
         setValue(newValue);
     };
 
-    if (data.mol === null) {
-      return (
-        <Alert severity="error">RDKit failed to process input!</Alert>
-      )
-    }
+    if (!data.mol) return <MolUnavailable mol={data.mol}/>;
 
     return (
         <Box sx={{width: '100%', typography: 'body1'}}>
@@ -80,6 +82,10 @@ export function HighlightsBlocks(data) {
 				</Box>
 			);
 		} else if (block_type === "single") {
+			if (!data.mol) {
+				blocks_content.push(<MolUnavailable mol={data.mol}/>);
+				continue;
+			}
 			var mdetails = {...GLOBAL_MOL_PARAMS};
 			mdetails["atoms"] = block_content;
 			var svg_mol = data.mol.get_svg_with_highlights(JSON.stringify(mdetails));
@@ -113,26 +119,43 @@ export function HighlightsBlocks(data) {
 }
 
 
+/**
+ * The RDKit molecule for a SMILES: undefined while RDKit is loading, null if it can't be parsed.
+ * The mol lives in wasm memory, so it is created once per SMILES and deleted by the same effect
+ * that made it (which also keeps it safe under StrictMode's double-run of effects).
+ */
+function useMol(smiles) {
+    const [mol, setMol] = React.useState(undefined);
+    React.useEffect(() => {
+        let mounted = true;
+        let created = null;
+        if (smiles === null || smiles === undefined) {
+            setMol(null);
+            return undefined;
+        }
+        setMol(undefined);
+        // RDKit is fetched once for the whole app, so it may not be there on the first render
+        loadRDKit().then((rdkit) => {
+            if (!mounted) return;
+            created = getMol(rdkit, smiles);
+            setMol(created);
+        }).catch(() => {
+            if (mounted) setMol(null);
+        });
+        return () => {
+            mounted = false;
+            if (created) created.delete();
+        };
+    }, [smiles]);
+    return mol;
+}
+
 export function DetailsBlockwise(data) {
     data = data.model_data;
     const smiles = data.smiles;
-    // RDKit is fetched once for the whole app, so it may not be there on the first render
-    const [rdkit, setRdkit] = React.useState(window.RDKit || null);
-    React.useEffect(() => {
-        let mounted = true;
-        loadRDKit().then((module) => {
-            if (mounted) setRdkit(module);
-        }).catch(() => {});
-        return () => {
-            mounted = false;
-        };
-    }, []);
-    var mol = null;
-    if (rdkit && !(smiles === null || smiles === undefined)) {
-        mol = rdkit.get_mol(smiles);
-    }
   	//var svg_mol = mol.get_svg_with_highlights(JSON.stringify(GLOBAL_MOL_PARAMS));
   	//svg_mol = svg_mol.substring(svg_mol.indexOf("<svg"));
+    const mol = useMol(smiles);
 
     return (
         <Box>
